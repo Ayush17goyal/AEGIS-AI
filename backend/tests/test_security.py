@@ -112,6 +112,31 @@ def test_api_auth_and_admin_boundaries(setup):
     assert client.get('/api/documents',headers=headers).status_code==401
     app.dependency_overrides.clear()
 
+def test_personal_dashboard_is_scoped_to_authenticated_user(setup):
+    db, _ = setup
+    execute(db, 'bob', 'Hello from Bob')
+    own = execute(db, 'individual', 'Hello')
+    app.dependency_overrides[db_session] = lambda: db
+    client = TestClient(app)
+    try:
+        assert client.get('/api/me/dashboard').status_code == 401
+        login = client.post('/api/auth/login', json={'username':'individual','password':'AegisDemo!2026'}).json()
+        headers = {'Authorization':'Bearer '+login['token']}
+        response = client.get('/api/me/dashboard?days=7', headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data['total'] == 1
+        assert [event['id'] for event in data['events']] == [own['id']]
+        assert sum(day['requests'] for day in data['timeline']) == 1
+        assert len(data['timeline']) == 7
+        assert data['mock_events'] == 1
+        assert client.get('/api/me/dashboard?days=8', headers=headers).status_code == 422
+        assert client.get('/api/analytics', headers=headers).status_code == 403
+        assert client.get('/api/incidents', headers=headers).status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_individual_login_preserves_authorization(setup):
     db, _ = setup
     app.dependency_overrides[db_session] = lambda: db

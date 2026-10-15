@@ -152,14 +152,59 @@ def row(obj): return {c.name:getattr(obj,c.name) for c in obj.__table__.columns}
 def incidents(user=Depends(admin),db=Depends(db_session)):
     return [row(e) for e in db.query(Event).order_by(Event.timestamp.desc()).limit(500)]
 
+def classify_action(action: str | None, outcome: str | None = None) -> str | None:
+    if not action:
+        return 'APPROVE / PENDING' if outcome and outcome.lower() == 'pending' else None
+    act = action.strip().upper()
+    if act in ('BLOCK', 'BLOCKED', 'ACCESS DENY', 'ACCESS_DENY', 'DENY', 'DENIED'):
+        return 'BLOCK'
+    if act in ('MASK', 'MASKED', 'REDACT', 'REDACTED'):
+        return 'MASK'
+    if act in ('HASH', 'HASHED', 'ANONYMIZE', 'ANONYMIZED', 'PSEUDONYMIZE', 'PSEUDONYMIZED'):
+        return 'HASH'
+    if act in ('APPROVE / PENDING', 'REQUIRE APPROVAL', 'REQUIRE_APPROVAL', 'APPROVAL', 'APPROVE', 'APPROVED', 'ALLOW', 'ALLOWED', 'WARN', 'PENDING', 'PENDING_APPROVAL', 'PENDING APPROVAL') or (outcome and outcome.lower() == 'pending'):
+        return 'APPROVE / PENDING'
+    return None
+
+def compute_security_actions(events):
+    counts = {'BLOCK': 0, 'MASK': 0, 'HASH': 0, 'APPROVE / PENDING': 0}
+    for e in events:
+        cat = classify_action(getattr(e, 'action', None), getattr(e, 'outcome', None))
+        if cat:
+            counts[cat] += 1
+    return counts
+
 @app.get('/api/analytics')
 def analytics(user=Depends(admin),db=Depends(db_session)):
     events=db.query(Event).all();actions=Counter(e.action for e in events);categories=Counter(c for e in events for c in e.categories);severities=Counter(e.severity for e in events)
+    action_counts = compute_security_actions(events)
     days={}
     for e in events:
         date=e.timestamp[:10];days.setdefault(date,{'date':date,'allowed':0,'prevented':0,'sanitized':0})
         days[date]['prevented' if e.action in ('BLOCK','ACCESS DENY') else 'sanitized' if e.action in ('MASK','REDACT') else 'allowed']+=1
-    return {'total':len(events),'blocked':actions['BLOCK']+actions['ACCESS DENY'],'sanitized':actions['MASK']+actions['REDACT'],'injections':categories['INJECTION'],'unauthorized':actions['ACCESS DENY'],'sensitive':sum(bool(e.categories) for e in events),'high_risk':sum(e.risk>=50 for e in events),'calls_prevented':sum(not e.model_called for e in events),'latency':round(sum(e.latency for e in events)/max(1,len(events)),2),'actions':[{'name':k,'value':v} for k,v in actions.items()],'categories':[{'name':k,'value':v} for k,v in categories.items()],'severity':[{'name':k,'value':v} for k,v in severities.items()],'timeline':list(sorted(days.values(),key=lambda x:x['date'])),'policy_effectiveness':[{'name':p.name,'value':sum(p.id in e.policies for e in events)} for p in db.query(Policy)],'policy_count':db.query(Policy).filter_by(enabled=True).count()+3}
+    return {'total':len(events),'blocked':action_counts['BLOCK'],'sanitized':action_counts['MASK'],'injections':categories['INJECTION'],'unauthorized':actions['ACCESS DENY'],'sensitive':sum(bool(e.categories) for e in events),'high_risk':sum(e.risk>=50 for e in events),'calls_prevented':sum(not e.model_called for e in events),'latency':round(sum(e.latency for e in events)/max(1,len(events)),2),'actions':[{'name':k,'value':v} for k,v in action_counts.items()],'raw_actions':[{'name':k,'value':v} for k,v in actions.items()],'categories':[{'name':k,'value':v} for k,v in categories.items()],'severity':[{'name':k,'value':v} for k,v in severities.items()],'timeline':list(sorted(days.values(),key=lambda x:x['date'])),'policy_effectiveness':[{'name':p.name,'value':sum(p.id in e.policies for e in events)} for p in db.query(Policy)],'policy_count':db.query(Policy).filter_by(enabled=True).count()+3}
+
+@app.get('/api/me/dashboard')
+def personal_dashboard(days:int=30,user=Depends(current_user),db=Depends(db_session)):
+    from datetime import datetime, timezone, timedelta
+    if days not in (7,30,90):
+        raise HTTPException(422,'Choose 7, 30, or 90 days')
+    identity='usr-'+hmac.new(os.getenv('AUDIT_HMAC_KEY','local-demo-only').encode(),user['id'].encode(),hashlib.sha256).hexdigest()[:10]
+    start=(datetime.now(timezone.utc)-timedelta(days=days-1)).date()
+    events=db.query(Event).filter(Event.user==identity,Event.timestamp>=start.isoformat()).order_by(Event.timestamp.desc()).all()
+    actions=Counter(e.action for e in events)
+    action_counts = compute_security_actions(events)
+    timeline={(start+timedelta(days=i)).isoformat():{'date':(start+timedelta(days=i)).isoformat(),'requests':0} for i in range(days)}
+    for event in events:
+        if event.timestamp[:10] in timeline:
+            timeline[event.timestamp[:10]]['requests']+=1
+    return {'total':len(events),'blocked':action_counts['BLOCK'],
+        'sanitized':action_counts['MASK'],
+        'latency':round(sum(e.latency for e in events)/len(events),1) if events else None,
+        'actions':[{'name':k,'value':v} for k,v in action_counts.items()],
+        'raw_actions':[{'name':k,'value':v} for k,v in actions.items()],
+        'timeline':list(timeline.values()),'events':[row(e) for e in events[:8]],
+        'mock_events':sum(e.provider=='mock' for e in events)}
 
 @app.get('/api/policies')
 def policies(user=Depends(admin),db=Depends(db_session)): return [row(p) for p in db.query(Policy)]
@@ -172,7 +217,7 @@ class PolicyUpdate(BaseModel):
 
 @app.put('/api/policies/{pid}')
 def update_policy(pid:str,body:PolicyUpdate,user=Depends(admin),db=Depends(db_session)):
-    if body.action not in ('WARN','MASK','BLOCK','REDACT','REQUIRE APPROVAL'): raise HTTPException(400,'Unsupported action')
+    if body.action not in ('WARN','MASK','BLOCK','REDACT','REQUIRE APPROVAL','HASH'): raise HTTPException(400,'Unsupported action')
     p=db.get(Policy,pid)
     if not p: raise HTTPException(404,'Policy not found')
     for k,v in body.model_dump().items(): setattr(p,k,v)

@@ -40,7 +40,7 @@ async def run(db,user,prompt,document_id=None,approval_granted=False):
     active=db.query(Policy).filter_by(enabled=True).all()
     matches=[p for p in active if p.scope in ('all',user['role'],user['id']) and any(f.category==p.category and f.confidence>=p.threshold for f in findings)]
     policies=[p.id for p in matches]
-    rank={'WARN':1,'MASK':2,'REDACT':2,'REQUIRE APPROVAL':3,'BLOCK':4}
+    rank={'WARN':1,'MASK':2,'REDACT':2,'HASH':2,'REQUIRE APPROVAL':3,'BLOCK':4}
     action=max((p.action for p in matches if not (approval_granted and p.action=='REQUIRE APPROVAL')),key=lambda a:rank[a],default='ALLOW')
     reason='Security inspection passed.'
     score=min(100,max((f.confidence*(1 if f.category in ('SECRET','INJECTION') else .7) for f in findings),default=0)+max(0,len(set(f.category for f in findings))-1)*10)
@@ -65,7 +65,7 @@ async def run(db,user,prompt,document_id=None,approval_granted=False):
     elif action=='BLOCK': response='This request was blocked by the security gateway. No model call was made.';reason=reason if reason!='Security inspection passed.' else 'A prevention policy blocked high-risk content.'
     elif action=='REQUIRE APPROVAL': response='This request requires administrator review. An authorized reviewer can approve and execute it within 15 minutes.';reason='Confidential content held for human review; prompt stored only in expiring server memory.'
     else:
-        sanitized=sanitize(prompt,[f for f in findings if any(p.category==f.category and p.action in ('MASK','REDACT') for p in matches)])
+        sanitized=sanitize(prompt,[f for f in findings if any(p.category==f.category and p.action in ('MASK','REDACT','HASH') for p in matches)])
         called=True
         try:
             output=await providers.provider.generate(sanitized,context)
@@ -80,7 +80,7 @@ async def run(db,user,prompt,document_id=None,approval_granted=False):
             else:
                 response=sanitize(output,output_findings)
                 if output_findings: action='REDACT';findings+=output_findings;policies.append('OUT-001')
-                reason='Sensitive values were replaced before model invocation.' if action in ('MASK','REDACT') else 'Request passed input, access, and output inspection.'
+                reason='Sensitive values were pseudonymized before model invocation.' if action=='HASH' else 'Sensitive values were replaced before model invocation.' if action in ('MASK','REDACT') else 'Request passed input, access, and output inspection.'
         except Exception:
             response='The model provider is unavailable. Your request was not sent to an alternate provider.';action='ERROR';reason='Provider request failed safely.'
     event_id='INC-'+uuid.uuid4().hex[:8].upper()
@@ -89,7 +89,7 @@ async def run(db,user,prompt,document_id=None,approval_granted=False):
     pseudonym=hmac.new(os.getenv('AUDIT_HMAC_KEY','local-demo-only').encode(),user['id'].encode(),hashlib.sha256).hexdigest()[:10]
     cutoff=(datetime.now(timezone.utc)-timedelta(days=int(os.getenv('AUDIT_RETENTION_DAYS','30')))).isoformat()
     db.execute(delete(Event).where(Event.timestamp<cutoff))
-    db.add(Event(id=event_id,timestamp=datetime.now(timezone.utc).isoformat(),user='usr-'+pseudonym,categories=sorted(set(f.category for f in findings)) if action!='ACCESS DENY' else ['AUTHORIZATION'],risk=round(score),severity=severity(score),policies=list(set(policies)),action=action,outcome='prevented' if action in ('BLOCK','ACCESS DENY') else 'pending' if action=='REQUIRE APPROVAL' else 'error' if action=='ERROR' else 'protected' if action in ('MASK','REDACT') else 'allowed',model_called=called,provider=providers.provider.name,latency=latency,reason=reason))
+    db.add(Event(id=event_id,timestamp=datetime.now(timezone.utc).isoformat(),user='usr-'+pseudonym,categories=sorted(set(f.category for f in findings)) if action!='ACCESS DENY' else ['AUTHORIZATION'],risk=round(score),severity=severity(score),policies=list(set(policies)),action=action,outcome='prevented' if action in ('BLOCK','ACCESS DENY') else 'pending' if action=='REQUIRE APPROVAL' else 'error' if action=='ERROR' else 'protected' if action in ('MASK','REDACT','HASH') else 'allowed',model_called=called,provider=providers.provider.name,latency=latency,reason=reason))
     if action=='REQUIRE APPROVAL':
         aid=uuid.uuid4().hex
         db.add(Approval(id=aid,event_id=event_id))

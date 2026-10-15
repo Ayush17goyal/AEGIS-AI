@@ -38,23 +38,21 @@
   --hero-type: clamp(52px, 5.25vw, 76px);
 }
 
-/* The light theme keeps the same amber security language while moving the
-   application surfaces to warm ivory and sand. The cinematic hero remains a
-   dark media stage so the portrait and its text retain their contrast. */
+/* Warm ivory surfaces with darker amber ink for readable light-theme accents. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --brand-bg: #f7f2eb;
-  --brand-bg-secondary: #efe5d6;
-  --brand-surface: #fffcf7;
-  --brand-surface-hover: #f5ebd9;
-  --brand-amber: #b86b16;
+  --brand-bg: #ece5da;
+  --brand-bg-secondary: #e4d9c9;
+  --brand-surface: #f3ece2;
+  --brand-surface-hover: #e9ddca;
+  --brand-amber: #b86a12;
   --brand-gold: #8f4d0b;
   --brand-copper: #a95d18;
   --brand-burnt-orange: #7a3e05;
-  --text-primary: #1a110a;
-  --text-secondary: #4a3827;
-  --text-muted: #6b5643;
-  --border-subtle: rgba(143, 77, 11, 0.22);
+  --text-primary: #17130f;
+  --text-secondary: #62584d;
+  --text-muted: #706254;
+  --border-subtle: rgba(105, 75, 35, 0.20);
   --border-active: rgba(143, 77, 11, 0.48);
   --amber-glow: rgba(184, 107, 22, 0.18);
   --status-success: #2e7d32;

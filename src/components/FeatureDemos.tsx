@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Terminal,
   Shield,
-  Sparkles,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
@@ -188,9 +187,6 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
     <div className="demo-studio">
       <div className="page-head">
         <span className="section-kicker">FEATURE DEMONSTRATION STUDIO</span>
-        <h1>
-          <Sparkles size={22} /> Approved pipeline scenarios
-        </h1>
         <p>
           Architecture v2: NeMo + Laya → Python policy → privacy → ACL → real
           LLM → Regex + Presidio. All fixtures are synthetic. Historical cards

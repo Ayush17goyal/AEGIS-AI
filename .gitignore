@@ -8,3 +8,4 @@ __pycache__/
 .venv/
 reference/
 *.tsbuildinfo
+artifacts/theme-check/

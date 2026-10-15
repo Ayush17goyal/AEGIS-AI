@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { HeroVideo } from "./components/HeroVideo";
 import { FeatureDemos } from "./components/FeatureDemos";
 import { FEATURE_PRESETS, PRESET_CATEGORIES } from "./presets";
 import { readPresetHandoff } from "./demoVerification";
@@ -37,8 +36,6 @@ import {
   Fingerprint,
   Command,
   Menu,
-  Pause,
-  Play,
   ShieldCheck,
   CircleDot,
   Building2,
@@ -154,19 +151,21 @@ const COLORS = [
   "var(--brand-gold)",
 ];
 const CHART_COLORS: Record<string, string> = {
+  BLOCK: "#EF4444",
+  MASK: "#3B82F6",
+  HASH: "#F59E0B",
+  "APPROVE / PENDING": "#22C55E",
   AUTHORIZATION: COLORS[0],
   PII: COLORS[1],
   INJECTION: COLORS[2],
   CONFIDENTIAL: COLORS[3],
   SECRET: COLORS[2],
   FINANCIAL: COLORS[4],
-  ALLOW: COLORS[3],
-  WARN: COLORS[0],
-  MASK: COLORS[1],
-  REDACT: COLORS[1],
-  BLOCK: COLORS[2],
-  "ACCESS DENY": COLORS[4],
-  "REQUIRE APPROVAL": COLORS[0],
+  ALLOW: "#22C55E",
+  WARN: "#22C55E",
+  REDACT: "#3B82F6",
+  "ACCESS DENY": "#EF4444",
+  "REQUIRE APPROVAL": "#22C55E",
   Low: COLORS[3],
   Medium: COLORS[0],
   High: COLORS[4],
@@ -181,7 +180,7 @@ const chartTooltip = {
   color: "var(--text-primary)",
 };
 const navigation = [
-  ["/app", "Overview", LayoutDashboard],
+  ["/app", "Dashboard", LayoutDashboard],
   ["/app/demos", "Feature Demos", Sparkles],
   ["/app/chat", "Secure chat", MessageSquare],
   ["/app/monitor", "Live monitor", Activity],
@@ -220,14 +219,14 @@ function App() {
   const [ready, setReady] = useState(false);
   const [login, setLogin] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(
-    () => (localStorage.getItem("aegis-theme") as "dark" | "light") || "dark",
+    () => document.documentElement.dataset.theme === "light" ? "light" : "dark",
   );
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("aegis-theme", theme);
+    try { localStorage.setItem("aegis-theme", theme); } catch { /* Theme still works when storage is unavailable. */ }
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme === "light" ? "#f5efe6" : "#100b07");
+      ?.setAttribute("content", theme === "light" ? "#ece5da" : "#100b07");
   }, [theme]);
   const toggleTheme = () => setTheme((current) => (current === "dark" ? "light" : "dark"));
   useEffect(() => {
@@ -294,7 +293,7 @@ function Brand() {
   return (
     <Link to="/" className="brand">
       <span className="brand-mark" aria-hidden="true">
-        <img src="/ai-guard-logo.png" alt="" />
+        <img src="/ai-guard-logo-transparent.png" alt="" />
       </span>
       <strong>
         AI <span>GUARD</span>
@@ -314,10 +313,6 @@ function Landing({
   onToggleTheme: () => void;
 }) {
   const [health, setHealth] = useState(false);
-  const [videoOptIn, setVideoOptIn] = useState(false);
-  const [motion, setMotion] = useState(
-    () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
   useEffect(() => {
     api("/health")
       .then(() => setHealth(true))
@@ -326,37 +321,27 @@ function Landing({
   const navigate = useNavigate();
   const enter = () => (user ? navigate("/app") : onEnter());
   return (
-    <div
-      className={`landing cinematic-landing ${motion ? "is-moving" : "motion-paused"}`}
-    >
+    <div className="landing cinematic-landing">
       <div className="landing-scene" aria-hidden="true">
-        <HeroVideo motion={motion} allowReducedMotion={videoOptIn} />
+        <div className="scene-image hero-media" data-media="poster" />
         <div className="scene-light" />
         <div className="scene-haze" />
       </div>
       <header className="public-header" id="top">
         <Brand />
         <nav>
-          <a href="#platform">Platform</a>
-          <a href="#architecture">How it works</a>
-          <a href="#protection">Protection</a>
+          <a href="#platform">How it works</a>
+          <button type="button" onClick={onEnter}>Protection</button>
         </nav>
         <div className="public-actions">
           <button className="theme-toggle" onClick={onToggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button className="outline" onClick={enter}>Open workspace <ArrowUpRight size={16} /></button>
         </div>
       </header>
       <main>
-        <section
-          className={`hero ${motion ? "is-moving" : "motion-paused"}`}
-          id="platform"
-        >
+        <section className="hero" id="hero">
           <div className="hero-top">
-            <span className="eyebrow">
-              <Fingerprint size={14} /> AI SECURITY. REIMAGINED.
-            </span>
             <span className="hero-index">AI GUARD / 001</span>
           </div>
           <div className="hero-copy">
@@ -374,34 +359,6 @@ function Landing({
             <button className="primary" onClick={enter}>
               Enter secure workspace <ArrowUpRight size={18} />
             </button>
-            <button
-              className="motion-control"
-              onClick={() => {
-                setVideoOptIn(true);
-                setMotion((current) => !current);
-              }}
-              aria-label={
-                motion ? "Pause hero animation" : "Play hero animation"
-              }
-              aria-pressed={!motion}
-              title={motion ? "Pause animation" : "Play animation"}
-            >
-              {motion ? <Pause size={15} /> : <Play size={15} />}
-            </button>
-            <div className="hero-caption">
-              <span className="pixel-stack">
-                ▥<br />▥<br />▥
-              </span>
-              <div>
-                <span className="caption-kicker">
-                  <i className="dot" /> BUILT FOR THE NEXT ERA OF AI
-                </span>
-                <p>
-                  Your data stays yours. Inspect every prompt, stop leaks before
-                  they happen, and let innovation flow freely.
-                </p>
-              </div>
-            </div>
           </div>
           <div className="hero-cards">
             <div className="glass gateway-card">
@@ -475,7 +432,7 @@ function Landing({
             </span>
           </div>
         </section>
-        <section className="trust-strip">
+        <section className="trust-strip" id="protection">
           <span>LESS EXPOSURE. MORE POSSIBILITY.</span>
           <div>
             <ShieldCheck /> Input inspection
@@ -490,7 +447,7 @@ function Landing({
             ONE CONNECTED GATEWAY <ArrowUpRight size={14} />
           </span>
         </section>
-        <section className="protection" id="protection">
+        <section className="protection" id="platform">
           <div>
             <span className="section-kicker">01 / THE PLATFORM</span>
             <h2>
@@ -505,7 +462,18 @@ function Landing({
             Useful AI. Real protection.
           </p>
         </section>
-        <div className="feature-grid" id="architecture">
+        <section className="how-it-works" id="architecture">
+          <div className="how-it-works-head">
+            <div>
+              <span className="section-kicker">02 / HOW IT WORKS</span>
+              <h2>Security at every step.</h2>
+            </div>
+            <p>
+              AI Guard inspects every request before it reaches a model, checks
+              access before retrieving context, and protects the final response.
+            </p>
+          </div>
+          <div className="feature-grid">
           {[
             [
               Fingerprint,
@@ -538,7 +506,8 @@ function Landing({
               </article>
             );
           })}
-        </div>
+          </div>
+        </section>
         <footer>
           <Brand />
           <span>CyberCup 6.0 · Synthetic data demonstration</span>
@@ -624,9 +593,10 @@ function Login({
         <h2 id="login-title">{signingIn ? "Sign in to AI Guard." : accountType === "company" ? "Choose your company role." : "Welcome to AI Guard."}</h2>
         <p className="auth-intro">{signingIn ? "Continue securely with your demo account." : accountType === "company" ? "Choose how you work within your organization." : "Choose the protection that fits your workspace."}</p>
         <div className="auth-progress" aria-label="Sign-in progress">
-          <span className={!accountType ? "current" : "complete"}>1 · Account type</span>
-          {accountType === "company" && <span className={!companyRole ? "current" : "complete"}>2 · Company role</span>}
-          <span className={signingIn ? "current" : ""}>{accountType === "company" ? "3" : "2"} · Sign in</span>
+          <span className={!accountType ? "current" : "complete"}>Account type</span>
+          <span className="auth-progress-arrow" aria-hidden="true">→</span>
+          {accountType === "company" && <><span className={!companyRole ? "current" : "complete"}>Company role</span><span className="auth-progress-arrow" aria-hidden="true">→</span></>}
+          <span className={signingIn ? "current" : ""}>Sign in</span>
         </div>
         {accountType && <button type="button" className="auth-back" onClick={back} disabled={busy}><ArrowLeft size={15} /> {companyRole ? "Change role" : "Change account type"}</button>}
         <div className="auth-step" key={!accountType ? "type" : signingIn ? "signin" : "role"}>
@@ -698,7 +668,6 @@ function Workspace({
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }) {
-  const { data: health } = useData<{ provider: string }>("/health");
   const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
   const [error, setError] = useState("");
@@ -715,14 +684,23 @@ function Workspace({
       <aside className={menu ? "sidebar open" : "sidebar"}>
         <Brand />
         <div className="workspace-label">
-          SECURITY WORKSPACE <span>LOCAL</span>
+          SECURITY WORKSPACE {user.role !== "individual" && <span>LOCAL</span>}
         </div>
+        <button
+          className="sidebar-theme-toggle"
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          onClick={onToggleTheme}
+        >
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          Change theme
+        </button>
         <nav>
           {navigation
             .filter(
               ([p]) =>
                 user.role === "admin" ||
-                ["/app/demos", "/app/chat", "/app/documents"].includes(p),
+                ["/app", "/app/analytics", "/app/demos", "/app/chat", "/app/documents"].includes(p),
             )
             .map(([path, label, Icon]) => (
               <NavLink
@@ -757,6 +735,7 @@ function Workspace({
               </small>
             </span>
             <button
+              className="workspace-sidebar-signout"
               aria-label="Sign out"
               onClick={signOut}
             >
@@ -774,35 +753,13 @@ function Workspace({
           >
             <Menu />
           </button>
-          <span>
-            Workspace <ChevronRight size={14} /> AI Guard
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            <Link to="/app/demos" className="header-studio-link">
-              <Sparkles size={13} /> Feature Demos
-            </Link>
-            <span className="header-persona-pill">
-              Persona: <strong>{user.name}</strong> ({user.role})
-            </span>
-            <button className="theme-toggle workspace-theme-toggle" onClick={onToggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
-              {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-            <span className="header-divider" />
-            <i className="dot" />{" "}
-            {health?.provider === "hosted" ? "Hosted model" : "Offline model"}{" "}
-            <span className="header-divider" /> <LockKeyhole size={15} />{" "}
-            Private session
-            <button className="header-signout" onClick={signOut}>
-              <LogOut size={15} /> Sign out
-            </button>
-          </div>
         </header>
         {error && <div className="error">{error}</div>}
         <main className="app-content">
           <Routes key={user.id}>
             <Route
               index
-              element={user.role === "admin" ? <Overview /> : <FeatureDemos user={user} onSwitchPersona={onSwitchPersona} />}
+              element={user.role === "admin" ? <Overview /> : <PersonalDashboard />}
             />
             <Route
               path="demos"
@@ -815,10 +772,10 @@ function Workspace({
             />
             <Route path="chat" element={<SecureChat />} />
             <Route path="documents" element={<Documents user={user} />} />
+            <Route path="analytics" element={user.role === "admin" ? <AnalyticsPage /> : <PersonalDashboard />} />
             {user.role === "admin" && (
               <>
                 <Route path="monitor" element={<Monitor />} />
-                <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="policies" element={<Policies />} />
                 <Route path="evaluation" element={<Evaluation />} />
               </>
@@ -837,7 +794,7 @@ function Workspace({
           <span>
             <Shield size={12} /> AI Guard · Prevention-first security
           </span>
-          <span>Privacy-safe audit · Local deployment</span>
+          <span>{user.role === "individual" ? "Your activity · Privacy-safe audit" : "Privacy-safe audit · Local deployment"}</span>
         </div>
       </div>
     </div>
@@ -908,6 +865,86 @@ function Metric({
     </div>
   );
 }
+type PersonalStats = {
+  total: number; blocked: number; sanitized: number; latency: number | null;
+  mock_events: number; actions: {name: string; value: number}[];
+  timeline: {date: string; requests: number}[]; events: Incident[];
+};
+function PersonalDashboard() {
+  const [days, setDays] = useState(30);
+  const [stats, setStats] = useState<PersonalStats | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [updated, setUpdated] = useState("");
+  const analytics = useLocation().pathname.endsWith("/analytics");
+  const outcomeTotal = stats?.actions.reduce((total, action) => total + action.value, 0) ?? 0;
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await api<PersonalStats>(`/me/dashboard?days=${days}`, {signal: controller.signal});
+        if (!controller.signal.aborted) {
+          setStats(data); setError(""); setUpdated(new Date().toLocaleTimeString());
+        }
+      } catch (e) {
+        if (!controller.signal.aborted) setError((e as Error).message);
+      } finally { if (!controller.signal.aborted) setLoading(false); }
+    };
+    setStats(null);
+    void load();
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 30000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [days, revision]);
+  return <div className="personal-dashboard" aria-busy={loading}>
+    <PageHead kicker="YOUR WORKSPACE" title={analytics ? "Your activity analytics" : "Your security dashboard"}
+      description="Understand your AI usage and security decisions at a glance.">
+      <div className="dashboard-controls">
+        <label>Period <select value={days} onChange={e => setDays(Number(e.target.value))}>
+          <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
+        </select></label>
+        <button className="outline" disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw size={16} />{loading ? "Updating…" : "Refresh"}</button>
+      </div>
+    </PageHead>
+    <ErrorBox error={error} />
+    <div className="dashboard-actions">
+      <Link className="primary" to="/app/chat"><MessageSquare size={18} /> Start secure chat <ArrowUpRight size={16} /></Link>
+      <Link className="outline" to="/app/documents"><FileLock2 size={18} /> My documents</Link>
+      {!analytics && <Link className="text-button" to="/app/analytics">View analytics <ArrowUpRight size={16} /></Link>}
+      <small role="status">{error ? "Update failed — displayed data may be out of date." : updated ? `Updated ${updated} · refreshes every 30s` : "Loading your activity…"}</small>
+    </div>
+    {stats && <>
+      <div className="metrics">
+        <Metric label="Requests recorded" value={`${stats.total} / ${stats.total}`} icon={Activity} detail={`Recorded requests out of ${stats.total} total`} />
+        <Metric label="Requests prevented" value={`${stats.blocked} / ${stats.total}`} icon={Shield} detail={`Blocked requests out of ${stats.total} recorded`} />
+        <Metric label="Requests sanitized" value={`${stats.sanitized} / ${stats.total}`} icon={Sparkles} detail={`Sensitive values masked out of ${stats.total} recorded`} />
+        <Metric label="Average response time" value={stats.latency === null ? "—" : `${stats.latency} ms`} icon={CircleDot} detail="Recorded end-to-end gateway latency" />
+      </div>
+      {stats.mock_events > 0 && <p className="dashboard-note">Includes {stats.mock_events} recorded offline/mock-model requests. These are not live-model results.</p>}
+      <div className="two-columns">
+        <section className="panel"><PanelTitle title="Request activity" subtitle="Daily request volume · hover a point for details · UTC" />
+          {stats.total ? <ResponsiveContainer width="100%" height={260}><LineChart data={stats.timeline} margin={{left: 0, right: 18, top: 12, bottom: 0}}>
+            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+            <XAxis dataKey="date" tickFormatter={value => value.slice(5)} fontSize={11} stroke="var(--text-muted)" minTickGap={25} />
+            <YAxis allowDecimals={false} stroke="var(--text-muted)" width={35} />
+            <Tooltip contentStyle={chartTooltip} />
+            <Line dataKey="requests" name="Requests" type="monotone" stroke="var(--brand-amber)" strokeWidth={3} dot={false} activeDot={{r: 6}} animationDuration={650} />
+          </LineChart></ResponsiveContainer> : <Empty text="No activity in this period. Start a secure chat to see your request history here." />}
+        </section>
+        <section className="panel"><PanelTitle title="Request outcomes" subtitle="Actual gateway decisions, including errors and pending approvals" />
+          {outcomeTotal ? <Donut data={stats.actions} centerLabel={outcomeTotal} /> : <Empty text={stats.total ? "No classified security outcomes are available for this period." : "Your outcome breakdown will appear after your first recorded request."} />}
+        </section>
+      </div>
+      <section className="panel"><PanelTitle title="Recent activity" subtitle="Your latest 8 requests · no prompt or response content stored here" />
+        {stats.events.length ? <div className="dashboard-events">{stats.events.map(event => <div className="dashboard-event" key={event.id}>
+          <Activity size={18} /><div><strong>{event.action}</strong><small>{new Date(event.timestamp).toLocaleString()} · {event.provider === "mock" ? "Offline / mock model" : event.provider}</small></div>
+          <Badge value={event.action} /><span>{event.latency} ms</span>
+        </div>)}</div> : <Empty text="No recorded requests yet. Your activity will appear here automatically." />}
+      </section>
+    </>}
+  </div>;
+}
 function Overview() {
   const { data: a, error, refresh } = useData<Analytics>("/analytics");
   const { data: events, refresh: refreshEvents } =
@@ -959,21 +996,21 @@ function Overview() {
           <>
             <Metric
               label="Requests inspected"
-              value={a.total}
+              value={`${a.total} / ${a.total}`}
               icon={Activity}
-              detail="Database-backed gateway events"
+              detail={`Database-backed events out of ${a.total} total`}
             />
             <Metric
               label="Threats prevented"
-              value={a.blocked}
+              value={`${a.blocked} / ${a.total}`}
               icon={Shield}
-              detail="Blocked + denied retrieval"
+              detail={`Blocked + denied retrieval out of ${a.total} requests`}
             />
             <Metric
               label="Requests sanitized"
-              value={a.sanitized}
+              value={`${a.sanitized} / ${a.total}`}
               icon={Sparkles}
-              detail="Masked or redacted values"
+              detail={`Masked or redacted values out of ${a.total} requests`}
             />
             <Metric
               label="Gateway latency"
@@ -1108,26 +1145,40 @@ function Timeline({ data }: { data: Analytics["timeline"] }) {
     <Empty />
   );
 }
-function Donut({ data }: { data: { name: string; value: number }[] }) {
-  return data.length ? (
+function Donut({ data, centerLabel }: { data: { name: string; value: number }[]; centerLabel?: number }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const renderData = data.map((item) => ({
+    ...item,
+    // Keep zero counts honest in the legend and tooltip while giving each
+    // supported outcome a visible color key inside the donut.
+    displayValue: item.value === 0 ? Math.max(0.08, total * 0.01) : item.value,
+  }));
+  return total ? (
     <div className="donut-wrap">
-      <ResponsiveContainer width="52%" height={210}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            innerRadius={57}
-            outerRadius={79}
-            paddingAngle={4}
-            stroke="none"
-          >
-            {data.map((_, i) => (
-              <Cell key={i} fill={chartColor(data[i].name, i)} />
-            ))}
-          </Pie>
-          <Tooltip contentStyle={chartTooltip} />
-        </PieChart>
-      </ResponsiveContainer>
+      <div className="donut-chart">
+        <ResponsiveContainer width="100%" height={210}>
+          <PieChart>
+            <Pie
+              data={renderData}
+              dataKey="displayValue"
+              innerRadius={57}
+              outerRadius={79}
+              paddingAngle={4}
+              stroke="var(--brand-bg-secondary)"
+              strokeWidth={2}
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={chartColor(data[i].name, i)} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={chartTooltip}
+              formatter={(_value, _name, item) => [item?.payload?.value ?? 0, item?.payload?.name ?? "Outcome"]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        {centerLabel !== undefined && <span className="donut-center"><strong>{centerLabel}</strong><small>Total</small></span>}
+      </div>
       <div className="legend">
         {data.map((d, i) => (
           <span key={d.name}>
@@ -1143,11 +1194,23 @@ function Donut({ data }: { data: { name: string; value: number }[] }) {
   );
 }
 function Badge({ value }: { value: string }) {
+  const normalized = value.trim().toUpperCase().replaceAll("_", " ");
+  const actionClass = normalized === "BLOCK" || normalized === "ACCESS DENY" || normalized === "DENIED"
+    ? "action-block"
+    : normalized === "MASK" || normalized === "REDACT"
+      ? "action-mask"
+      : normalized === "HASH" || normalized === "HASHED"
+        ? "action-hash"
+        : ["APPROVE", "APPROVED", "ALLOW", "ALLOWED", "PENDING", "PENDING APPROVAL", "REQUIRE APPROVAL"].includes(normalized)
+          ? "action-approve"
+          : "";
   return (
     <span
       data-action={value}
+      data-outcome={actionClass ? actionClass.replace("action-", "") : undefined}
       className={
         "badge " +
+        actionClass + " " +
         (["Critical", "BLOCK", "ACCESS DENY", "ERROR", "rejected"].includes(
           value,
         )
