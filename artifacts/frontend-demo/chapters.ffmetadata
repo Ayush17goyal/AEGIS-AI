@@ -1,0 +1,159 @@
+;FFMETADATA1
+title=AI Guard - Frontend Feature Walkthrough
+comment=Real frontend interactions; synthetic demo data; offline demonstration model.
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=4000
+title=01 | Welcome to AI Guard
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=4000
+END=9000
+title=02 | Company roles
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=9000
+END=13000
+title=03 | Administrator sign-in
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=13000
+END=18000
+title=04 | Security overview
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=18000
+END=25000
+title=05 | Secure AI chat
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=25000
+END=30000
+title=06 | Safe requests are allowed
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=30000
+END=38000
+title=07 | Personal data protection
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=38000
+END=43000
+title=08 | Explainable gateway evidence
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=43000
+END=60000
+title=09 | Prompt injection defense
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=60000
+END=70000
+title=10 | Untrusted document defense
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=70000
+END=79500
+title=11 | Confidential review workflow
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=79500
+END=93000
+title=12 | Live security monitor
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=93000
+END=102500
+title=13 | Security analytics
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=102500
+END=110500
+title=14 | Policy management
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=110500
+END=118500
+title=15 | Human review queue
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=118500
+END=123500
+title=16 | Document security
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=123500
+END=138500
+title=17 | Document creation form
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=138500
+END=147500
+title=18 | Authorized document retrieval
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=147500
+END=156500
+title=19 | Evaluation and benchmarking
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=156500
+END=164500
+title=20 | Normal employee access
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=164500
+END=174000
+title=21 | Authorized employee retrieval
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=174000
+END=189000
+title=22 | Limited employee boundaries
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=189000
+END=194000
+title=23 | Individual login
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=194000
+END=201500
+title=24 | Password visibility and validation
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=201500
+END=210500
+title=25 | Personal workspace
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=210500
+END=215500
+title=26 | Secure sign-out

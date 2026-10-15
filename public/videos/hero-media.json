@@ -1,0 +1,22 @@
+{
+  "desktop": [
+    {
+      "src": "/videos/aegis-hero.webm",
+      "type": "video/webm"
+    },
+    {
+      "src": "/videos/aegis-hero.mp4",
+      "type": "video/mp4"
+    }
+  ],
+  "mobile": [
+    {
+      "src": "/videos/aegis-hero-mobile.webm",
+      "type": "video/webm"
+    },
+    {
+      "src": "/videos/aegis-hero-mobile.mp4",
+      "type": "video/mp4"
+    }
+  ]
+}

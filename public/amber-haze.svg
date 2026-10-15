@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <filter id="haze" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".006 .012" numOctaves="4" seed="21" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .44  0 0 0 0 .24  0 0 0 0 .075  .5 .5 .5 0 -.54"/>
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="800" filter="url(#haze)"/>
+</svg>

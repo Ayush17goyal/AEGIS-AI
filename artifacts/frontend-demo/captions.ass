@@ -1,0 +1,65 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 816
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,Arial,24,&H008AD1FF,&H008AD1FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,7,28,28,15,1
+Style: Description,Arial,18,&H00E7E0D8,&H00E7E0D8,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,28,28,51,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:04.00,Title,,0,0,0,,01 | Welcome to AI Guard
+Dialogue: 0,0:00:00.00,0:00:04.00,Description,,0,0,0,,Choose personal protection or an organization workspace.
+Dialogue: 0,0:00:04.00,0:00:09.00,Title,,0,0,0,,02 | Company roles
+Dialogue: 0,0:00:04.00,0:00:09.00,Description,,0,0,0,,Administrator, limited employee, and normal employee map to verified demo identities.
+Dialogue: 0,0:00:09.00,0:00:13.00,Title,,0,0,0,,03 | Administrator sign-in
+Dialogue: 0,0:00:09.00,0:00:13.00,Description,,0,0,0,,The role filters the account list. Backend credentials determine actual permissions.
+Dialogue: 0,0:00:13.00,0:00:18.00,Title,,0,0,0,,04 | Security overview
+Dialogue: 0,0:00:13.00,0:00:18.00,Description,,0,0,0,,Live dashboard: monitored requests, prevention outcomes, risk, and recent events.
+Dialogue: 0,0:00:18.00,0:00:25.00,Title,,0,0,0,,05 | Secure AI chat
+Dialogue: 0,0:00:18.00,0:00:25.00,Description,,0,0,0,,Choose a prompt or a synthetic security scenario, then send it through the gateway.
+Dialogue: 0,0:00:25.00,0:00:30.00,Title,,0,0,0,,06 | Safe requests are allowed
+Dialogue: 0,0:00:25.00,0:00:30.00,Description,,0,0,0,,The offline demo model receives the inspected request and returns a protected response.
+Dialogue: 0,0:00:30.00,0:00:38.00,Title,,0,0,0,,07 | Personal data protection
+Dialogue: 0,0:00:30.00,0:00:38.00,Description,,0,0,0,,Load synthetic personal data to demonstrate masking before the model is called.
+Dialogue: 0,0:00:38.00,0:00:43.00,Title,,0,0,0,,08 | Explainable gateway evidence
+Dialogue: 0,0:00:38.00,0:00:43.00,Description,,0,0,0,,Masked identifiers, detector confidence, and policy IDs explain the decision.
+Dialogue: 0,0:00:43.00,0:01:00.00,Title,,0,0,0,,09 | Prompt injection defense
+Dialogue: 0,0:00:43.00,0:01:00.00,Description,,0,0,0,,Instruction overrides are blocked before reaching the model.
+Dialogue: 0,0:01:00.00,0:01:10.00,Title,,0,0,0,,10 | Untrusted document defense
+Dialogue: 0,0:01:00.00,0:01:10.00,Description,,0,0,0,,Document-borne instructions are inspected before model context is accepted.
+Dialogue: 0,0:01:10.00,0:01:19.50,Title,,0,0,0,,11 | Confidential review workflow
+Dialogue: 0,0:01:10.00,0:01:19.50,Description,,0,0,0,,Sensitive business requests can be held for administrator review before model execution.
+Dialogue: 0,0:01:19.50,0:01:33.00,Title,,0,0,0,,12 | Live security monitor
+Dialogue: 0,0:01:19.50,0:01:33.00,Description,,0,0,0,,Review content-free audit events, filter outcomes, and inspect individual incidents.
+Dialogue: 0,0:01:33.00,0:01:42.50,Title,,0,0,0,,13 | Security analytics
+Dialogue: 0,0:01:33.00,0:01:42.50,Description,,0,0,0,,Review measured enforcement outcomes, category breakdowns, and policy effectiveness.
+Dialogue: 0,0:01:42.50,0:01:50.50,Title,,0,0,0,,14 | Policy management
+Dialogue: 0,0:01:42.50,0:01:50.50,Description,,0,0,0,,Inspect policy actions, thresholds, and scope. Mandatory controls remain enforced.
+Dialogue: 0,0:01:50.50,0:01:58.50,Title,,0,0,0,,15 | Human review queue
+Dialogue: 0,0:01:50.50,0:01:58.50,Description,,0,0,0,,Confidential requests appear as metadata-only review records; this demo rejects the held request.
+Dialogue: 0,0:01:58.50,0:02:03.50,Title,,0,0,0,,16 | Document security
+Dialogue: 0,0:01:58.50,0:02:03.50,Description,,0,0,0,,Administrators inspect classification, ownership, and explicit document permissions.
+Dialogue: 0,0:02:03.50,0:02:18.50,Title,,0,0,0,,17 | Document creation form
+Dialogue: 0,0:02:03.50,0:02:18.50,Description,,0,0,0,,Classification, content, and allowed users or roles can be configured before saving.
+Dialogue: 0,0:02:18.50,0:02:27.50,Title,,0,0,0,,18 | Authorized document retrieval
+Dialogue: 0,0:02:18.50,0:02:27.50,Description,,0,0,0,,Test retrieval checks the signed-in identity before passing approved context to the model.
+Dialogue: 0,0:02:27.50,0:02:36.50,Title,,0,0,0,,19 | Evaluation and benchmarking
+Dialogue: 0,0:02:27.50,0:02:36.50,Description,,0,0,0,,Measured results from synthetic fixtures, including precision, recall, and enforcement checks.
+Dialogue: 0,0:02:36.50,0:02:44.50,Title,,0,0,0,,20 | Normal employee access
+Dialogue: 0,0:02:36.50,0:02:44.50,Description,,0,0,0,,Alice has assigned document permissions and no organization-wide administration.
+Dialogue: 0,0:02:44.50,0:02:54.00,Title,,0,0,0,,21 | Authorized employee retrieval
+Dialogue: 0,0:02:44.50,0:02:54.00,Description,,0,0,0,,Alice can retrieve the synthetic Orion budget because her backend identity is permitted.
+Dialogue: 0,0:02:54.00,0:03:09.00,Title,,0,0,0,,22 | Limited employee boundaries
+Dialogue: 0,0:02:54.00,0:03:09.00,Description,,0,0,0,,Bob can use the assistant, but restricted company content remains inaccessible.
+Dialogue: 0,0:03:09.00,0:03:14.00,Title,,0,0,0,,23 | Individual login
+Dialogue: 0,0:03:09.00,0:03:14.00,Description,,0,0,0,,Personal accounts skip company role selection and enter their own restricted workspace.
+Dialogue: 0,0:03:14.00,0:03:21.50,Title,,0,0,0,,24 | Password visibility and validation
+Dialogue: 0,0:03:14.00,0:03:21.50,Description,,0,0,0,,Show or hide the password; incorrect credentials return a clear sign-in error.
+Dialogue: 0,0:03:21.50,0:03:30.50,Title,,0,0,0,,25 | Personal workspace
+Dialogue: 0,0:03:21.50,0:03:30.50,Description,,0,0,0,,The individual identity has secure chat and permitted documents, with no admin navigation.
+Dialogue: 0,0:03:30.50,0:03:35.50,Title,,0,0,0,,26 | Secure sign-out
+Dialogue: 0,0:03:30.50,0:03:35.50,Description,,0,0,0,,Sign out ends the session and returns to the public AI Guard experience.

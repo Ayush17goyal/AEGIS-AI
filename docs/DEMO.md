@@ -1,0 +1,13 @@
+# Judge demonstration
+
+Start both servers and generate the evaluation report as described in README. All identifiers below are deliberately synthetic. Open the landing page first to demonstrate the recording-inspired design, then enter the workspace.
+
+1. **Personal information protection:** Sign in as admin. Open Secure chat, choose Personal data, then Send. Expect MASK, model called, and `[PII_REDACTED]` placeholders in gateway evidence. This evidence corresponds to the sanitized model input with additional safe preview redaction if any other policy was intentionally weakened. Open Live monitor, select the incident, and inspect metadata without original values.
+2. **Direct and indirect injection:** Load Prompt injection and Send. Expect BLOCK and Model prevented. Load Indirect injection and Send; expect CTX-001 and no model call. The vendor note is available to Alice/admin but its instructions are treated as untrusted data.
+3. **RAG access control:** Sign out, sign in as Alice, load Restricted retrieval, and Send. Expect an authorized answer with the fictional 4.2 million demo-credit budget. Sign out and sign in as Bob. His Document security list excludes the restricted title. Load the same Restricted retrieval fixture and Send. Expect ACCESS DENY, zero retrieved chunks, and Model prevented. The known synthetic document ID in the test fixture is not a metadata listing. Server denial applies even with all input policies disabled.
+4. **Live audit and policy behavior:** Return as admin. Inspect Overview, Analytics, and Live monitor. These use actual local gateway events. In Policies, change the PII action from MASK to BLOCK and save; repeat Personal data and observe no model call. Restore MASK.
+5. **Review queue:** Submit `CONFIDENTIAL: synthetic business plan for a fictional merger.` Open Policies as admin. Approve the pending record, then Run approved. Observe a safe result after all other gateway stages are rechecked. The request expires after 15 minutes or server restart.
+6. **Document ingestion:** Add a synthetic `.txt` document, choose RESTRICTED, and permit Alice only. Test retrieval as the owner. Bob cannot list or retrieve the document. Owners/admin can replace content and edit access.
+7. **Evidence:** Open Evaluation. Show the actual 46-case report. Explain that rules are heuristic and the perfect fixture result is not a claim of perfect security.
+
+Presentation plan: 30 seconds landing, 60 seconds masking, 60 seconds injection, 90 seconds role-switch retrieval, 60 seconds audit/evaluation. Show the model-called field for each enforcement outcome.

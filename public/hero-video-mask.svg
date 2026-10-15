@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="780" viewBox="0 0 920 780">
+  <defs>
+    <linearGradient id="horizontal"><stop stop-color="white" stop-opacity="0"/><stop offset=".16" stop-color="white"/><stop offset=".92" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
+    <linearGradient id="vertical" x2="0" y2="1"><stop stop-color="white" stop-opacity="0"/><stop offset=".08" stop-color="white"/><stop offset=".72" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="24"/></filter>
+    <mask id="clean"><rect width="920" height="780" fill="white"/><ellipse cx="825" cy="695" rx="150" ry="125" fill="black" filter="url(#soft)"/></mask>
+    <mask id="fade"><rect width="920" height="780" fill="url(#vertical)"/></mask>
+  </defs>
+  <g mask="url(#clean)"><rect width="920" height="780" fill="url(#horizontal)" mask="url(#fade)"/></g>
+</svg>
