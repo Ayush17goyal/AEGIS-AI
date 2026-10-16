@@ -7,6 +7,7 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
   NavLink,
   Link,
   useNavigate,
@@ -21,10 +22,10 @@ import {
   LockKeyhole,
   Sparkles,
   LayoutDashboard,
+  History as HistoryIcon,
   MessageSquare,
-  SlidersHorizontal,
+  Settings,
   FileLock2,
-  ChartNoAxesCombined,
   FlaskConical,
   Search,
   Send,
@@ -67,6 +68,7 @@ import "./landing.css";
 export type User = { id: string; name: string; role: string };
 type Incident = {
   id: string;
+  title?: string;
   timestamp: string;
   user: string;
   categories: string[];
@@ -110,6 +112,13 @@ type Policy = {
   threshold: number;
   scope: string;
 };
+type SettingsEmployee = {
+  id: string; name: string; email: string; status: string;
+  monitoring_level: "summary" | "security" | "full"; resource_count: number;
+};
+type SettingsResource = { id: string; name: string; type: string; owner_id: string; owner: string; public: boolean; access: Record<string, "owner" | "shared" | "public" | "none"> };
+type SettingsAccessData = { employees: SettingsEmployee[]; resources: SettingsResource[]; mandatory: { id: string; name: string }[] };
+type EmployeeActivity = { employee_id: string; monitoring_level: string; total: number; blocked: number; masked: number; hashed: number; pending: number; events: any[]; resource_activity: { resource_id: string; count: number }[] };
 type Doc = {
   id: string;
   title: string;
@@ -119,6 +128,14 @@ type Doc = {
   allowed_roles: string[];
   source: string;
   created_at: string;
+  filename?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  retention_policy?: string | null;
+  retention_label?: string | null;
+  delete_at?: string | null;
+  processing_status?: string | null;
+  deletion_status?: string | null;
 };
 type Analytics = {
   total: number;
@@ -136,6 +153,7 @@ type Analytics = {
   severity: { name: string; value: number }[];
   timeline: {
     date: string;
+    requests?: number;
     allowed: number;
     prevented: number;
     sanitized: number;
@@ -181,13 +199,12 @@ const chartTooltip = {
 };
 const navigation = [
   ["/app", "Dashboard", LayoutDashboard],
+  ["/app/history", "History & Analytics", HistoryIcon],
   ["/app/demos", "Feature Demos", Sparkles],
   ["/app/chat", "Secure chat", MessageSquare],
-  ["/app/monitor", "Live monitor", Activity],
-  ["/app/analytics", "Analytics", ChartNoAxesCombined],
-  ["/app/policies", "Policies", SlidersHorizontal],
-  ["/app/documents", "Document security", FileLock2],
   ["/app/evaluation", "Evaluation", FlaskConical],
+  ["/app/settings-access", "Settings & Access", Settings],
+  ["/app/documents", "Document security", FileLock2],
 ] as const;
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch("/api" + path, {
@@ -206,6 +223,15 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     throw Object.assign(new Error(typeof data.detail === "string" ? data.detail : "Request validation failed"), { status: response.status });
   }
   return response.json();
+}
+async function fileBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 function RouteScroll() {
   const { pathname } = useLocation();
@@ -684,7 +710,7 @@ function Workspace({
       <aside className={menu ? "sidebar open" : "sidebar"}>
         <Brand />
         <div className="workspace-label">
-          SECURITY WORKSPACE {user.role !== "individual" && <span>LOCAL</span>}
+          SECURITY WORKSPACE
         </div>
         <button
           className="sidebar-theme-toggle"
@@ -700,7 +726,7 @@ function Workspace({
             .filter(
               ([p]) =>
                 user.role === "admin" ||
-                ["/app", "/app/analytics", "/app/demos", "/app/chat", "/app/documents"].includes(p),
+                ["/app", "/app/history", "/app/demos", "/app/chat", "/app/documents"].includes(p),
             )
             .map(([path, label, Icon]) => (
               <NavLink
@@ -759,7 +785,7 @@ function Workspace({
           <Routes key={user.id}>
             <Route
               index
-              element={user.role === "admin" ? <Overview /> : <PersonalDashboard />}
+              element={user.role === "admin" ? <Overview /> : <PersonalDashboard user={user} />}
             />
             <Route
               path="demos"
@@ -770,14 +796,14 @@ function Workspace({
                 />
               }
             />
+            <Route path="history" element={<HistoryPage />} />
             <Route path="chat" element={<SecureChat />} />
             <Route path="documents" element={<Documents user={user} />} />
-            <Route path="analytics" element={user.role === "admin" ? <AnalyticsPage /> : <PersonalDashboard />} />
+            <Route path="analytics" element={user.role === "admin" ? <Navigate replace to="/app" /> : <PersonalDashboard user={user} />} />
             {user.role === "admin" && (
               <>
-                <Route path="monitor" element={<Monitor />} />
-                <Route path="policies" element={<Policies />} />
                 <Route path="evaluation" element={<Evaluation />} />
+                <Route path="settings-access" element={<SettingsAccess />} />
               </>
             )}
             <Route
@@ -805,16 +831,18 @@ function PageHead({
   title,
   description,
   children,
+  kickerClassName,
 }: {
   kicker: string;
   title: string;
   description: string;
   children?: React.ReactNode;
+  kickerClassName?: string;
 }) {
   return (
     <div className="page-head">
       <div>
-        <span className="section-kicker">{kicker}</span>
+        <span className={`section-kicker ${kickerClassName || ""}`}>{kicker}</span>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
@@ -865,13 +893,37 @@ function Metric({
     </div>
   );
 }
+type ResourceScope = "all" | "limited" | "mine";
+const resourceScopeLabels: Record<ResourceScope, string> = {
+  all: "All Resources",
+  limited: "Limited Resources",
+  mine: "My Resources",
+};
+function ResourceScopeSelect({ value, onChange }: { value: ResourceScope; onChange: (value: ResourceScope) => void }) {
+  return (
+    <label className="resource-scope-control">
+      Resource Scope
+      <select aria-label="Resource Scope" value={value} onChange={(e) => onChange(e.target.value as ResourceScope)}>
+        {(Object.keys(resourceScopeLabels) as ResourceScope[]).map((scope) => <option key={scope} value={scope}>{resourceScopeLabels[scope]}</option>)}
+      </select>
+    </label>
+  );
+}
 type PersonalStats = {
   total: number; blocked: number; sanitized: number; latency: number | null;
   mock_events: number; actions: {name: string; value: number}[];
-  timeline: {date: string; requests: number}[]; events: Incident[];
+  categories: {name: string; value: number}[];
+  severity: {name: string; value: number}[];
+  timeline: {date: string; requests: number; allowed: number; prevented: number; sanitized: number}[]; events: Incident[];
 };
-function PersonalDashboard() {
+function PersonalDashboard({ user }: { user: User }) {
   const [days, setDays] = useState(30);
+  const [scope, setScope] = useState<ResourceScope>(() => {
+    try {
+      const saved = localStorage.getItem("aegis-resource-scope");
+      return saved === "limited" || saved === "mine" ? saved : "all";
+    } catch { return "all"; }
+  });
   const [stats, setStats] = useState<PersonalStats | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -884,7 +936,7 @@ function PersonalDashboard() {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await api<PersonalStats>(`/me/dashboard?days=${days}`, {signal: controller.signal});
+        const data = await api<PersonalStats>(`/me/dashboard?days=${days}&scope=${scope}`, {signal: controller.signal});
         if (!controller.signal.aborted) {
           setStats(data); setError(""); setUpdated(new Date().toLocaleTimeString());
         }
@@ -896,14 +948,18 @@ function PersonalDashboard() {
     void load();
     const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 30000);
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [days, revision]);
+  }, [days, scope, revision]);
+  useEffect(() => {
+    try { localStorage.setItem("aegis-resource-scope", scope); } catch { /* session still works without persistence */ }
+  }, [scope]);
   return <div className="personal-dashboard" aria-busy={loading}>
     <PageHead kicker="YOUR WORKSPACE" title={analytics ? "Your activity analytics" : "Your security dashboard"}
-      description="Understand your AI usage and security decisions at a glance.">
+      description={user.role === "employee" ? "Review activity and protections for your assigned workspace access." : "Understand your personal AI usage and security decisions at a glance."}>
       <div className="dashboard-controls">
         <label>Period <select value={days} onChange={e => setDays(Number(e.target.value))}>
           <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
         </select></label>
+        <ResourceScopeSelect value={scope} onChange={setScope} />
         <button className="outline" disabled={loading} onClick={() => setRevision(n => n + 1)}><RefreshCw size={16} />{loading ? "Updating…" : "Refresh"}</button>
       </div>
     </PageHead>
@@ -923,36 +979,111 @@ function PersonalDashboard() {
       </div>
       {stats.mock_events > 0 && <p className="dashboard-note">Includes {stats.mock_events} recorded offline/mock-model requests. These are not live-model results.</p>}
       <div className="two-columns">
-        <section className="panel"><PanelTitle title="Request activity" subtitle="Daily request volume · hover a point for details · UTC" />
-          {stats.total ? <ResponsiveContainer width="100%" height={260}><LineChart data={stats.timeline} margin={{left: 0, right: 18, top: 12, bottom: 0}}>
-            <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={value => value.slice(5)} fontSize={11} stroke="var(--text-muted)" minTickGap={25} />
-            <YAxis allowDecimals={false} stroke="var(--text-muted)" width={35} />
-            <Tooltip contentStyle={chartTooltip} />
-            <Line dataKey="requests" name="Requests" type="monotone" stroke="var(--brand-amber)" strokeWidth={3} dot={false} activeDot={{r: 6}} animationDuration={650} />
-          </LineChart></ResponsiveContainer> : <Empty text="No activity in this period. Start a secure chat to see your request history here." />}
+        <section className="panel"><PanelTitle title="Request activity" subtitle={`Daily request volume · last ${days} days · UTC`} />
+          <Timeline data={stats.timeline} emptyText="No activity in this period. Start a secure chat to see your request history here." />
         </section>
         <section className="panel"><PanelTitle title="Request outcomes" subtitle="Actual gateway decisions, including errors and pending approvals" />
           {outcomeTotal ? <Donut data={stats.actions} centerLabel={outcomeTotal} /> : <Empty text={stats.total ? "No classified security outcomes are available for this period." : "Your outcome breakdown will appear after your first recorded request."} />}
         </section>
       </div>
-      <section className="panel"><PanelTitle title="Recent activity" subtitle="Your latest 8 requests · no prompt or response content stored here" />
-        {stats.events.length ? <div className="dashboard-events">{stats.events.map(event => <div className="dashboard-event" key={event.id}>
-          <Activity size={18} /><div><strong>{event.action}</strong><small>{new Date(event.timestamp).toLocaleString()} · {event.provider === "mock" ? "Offline / mock model" : event.provider}</small></div>
-          <Badge value={event.action} /><span>{event.latency} ms</span>
-        </div>)}</div> : <Empty text="No recorded requests yet. Your activity will appear here automatically." />}
-      </section>
+      <div className="two-columns personal-analytics-grid">
+        <section className="panel"><PanelTitle title="Incidents over time" subtitle="Your actual UTC-day activity" />
+          <Timeline data={stats.timeline} />
+        </section>
+        <section className="panel"><PanelTitle title="Allowed vs. prevented" subtitle="Your actual enforcement outcomes" />
+          <Donut data={stats.actions} />
+        </section>
+        <section className="panel"><PanelTitle title="Data categories / attack types" subtitle="Categories detected in your requests" />
+          <Donut data={stats.categories} />
+        </section>
+        <section className="panel"><PanelTitle title="Risk severity distribution" subtitle="Low 0–24 · Medium 25–49 · High 50–74 · Critical 75–100" />
+          <Donut data={stats.severity} />
+        </section>
+      </div>
     </>}
   </div>;
 }
+
+type HistoryResponse = { events: Incident[]; total: number; limit: number };
+
+function HistoryPage() {
+  const [showAll, setShowAll] = useState(true);
+  const [scope, setScope] = useState<ResourceScope>(() => {
+    try {
+      const saved = localStorage.getItem("aegis-resource-scope");
+      return saved === "limited" || saved === "mine" ? saved : "all";
+    } catch { return "all"; }
+  });
+  const [action, setAction] = useState("");
+  const [severity, setSeverity] = useState("");
+  const [date, setDate] = useState("");
+  const [query, setQuery] = useState("");
+  const [data, setData] = useState<HistoryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const load = () => {
+    setLoading(true);
+    api<HistoryResponse>(`/me/history?limit=${showAll ? 500 : 7}&scope=${scope}`)
+      .then((next) => { setData(next); setError(""); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(() => { if (!document.hidden) load(); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [showAll, scope]);
+  useEffect(() => {
+    try { localStorage.setItem("aegis-resource-scope", scope); } catch { /* session still works without persistence */ }
+  }, [scope]);
+  const filtered = (data?.events || []).filter((event) => {
+    const searchable = `${event.title || ""} ${event.id} ${event.user} ${event.provider} ${event.action} ${event.outcome} ${(event.categories || []).join(" ")}`.toLowerCase();
+    return (!action || event.action === action)
+      && (!severity || event.severity === severity)
+      && (!date || event.timestamp.slice(0, 10) === date)
+      && searchable.includes(query.trim().toLowerCase());
+  });
+  return (
+    <div className="history-page" aria-busy={loading}>
+      <PageHead kicker="LIVE SECURITY HISTORY" title="Request History" description="Review security decisions as they happen and inspect individual results.">
+        <button className="outline" onClick={load} disabled={loading}><RefreshCw size={16} /> {loading ? "Loading…" : "Refresh"}</button>
+      </PageHead>
+      <ErrorBox error={error} />
+      <section className="panel history-panel">
+        <PanelTitle
+          title="Security events"
+          subtitle={data ? `${filtered.length} matching events · refreshed every 10 seconds` : "Loading your authorized records…"}
+          action={<button className="text-button" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show recent" : "View all"}</button>}
+        />
+        <div className="history-controls">
+          <label className="search"><Search size={16} /><input aria-label="Search history" placeholder="Search incidents or categories…" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+          <ResourceScopeSelect value={scope} onChange={setScope} />
+          <select aria-label="Filter history by severity" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+            <option value="">All severities</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+          </select>
+          <select aria-label="Filter history by action" value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">All actions</option>{["ALLOW", "WARN", "MASK", "REDACT", "HASH", "BLOCK", "ACCESS DENY", "REQUIRE APPROVAL", "ERROR"].map((value) => <option key={value}>{value}</option>)}
+          </select>
+          <input aria-label="Event date UTC" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        {data ? (
+          <div className="history-table-shell" aria-busy={loading}>
+            {loading && <span className="history-refreshing">Updating events…</span>}
+            <EventTable events={filtered} />
+          </div>
+        ) : <div className="history-empty">Loading request history…</div>}
+      </section>
+    </div>
+  );
+}
+
 function Overview() {
   const { data: a, error, refresh } = useData<Analytics>("/analytics");
-  const { data: events, refresh: refreshEvents } =
-    useData<Incident[]>("/incidents");
   return (
     <>
       <PageHead
-        kicker="01 / SECURITY OVERVIEW"
+        kicker="SECURITY OVERVIEW"
+        kickerClassName="overview-kicker"
         title="Intelligence, protected."
         description="A clear view of every request passing through your gateway."
       >
@@ -960,37 +1091,12 @@ function Overview() {
           className="outline"
           onClick={() => {
             refresh();
-            refreshEvents();
           }}
         >
           <RefreshCw size={16} /> Refresh
         </button>
       </PageHead>
       <ErrorBox error={error} />
-      <div className="overview-banner">
-        <div>
-          <span className="eyebrow">
-            <i className="dot" /> GATEWAY OPERATIONAL
-          </span>
-          <h2>
-            Your next idea.
-            <br />
-            <span>Already protected.</span>
-          </h2>
-          <p>
-            Input inspection, authorized context, and output
-            <br />
-            protection — working together.
-          </p>
-          <Link className="primary" to="/app/chat">
-            Open secure chat <ArrowUpRight size={17} />
-          </Link>
-        </div>
-        <div className="banner-shield">
-          <ShieldCheck size={105} strokeWidth={0.8} />
-          <span>AI GUARD / ACTIVE</span>
-        </div>
-      </div>
       <div className="metrics">
         {a && (
           <>
@@ -1024,44 +1130,34 @@ function Overview() {
       <div className="two-columns">
         <div className="panel">
           <PanelTitle
-            title="Gateway activity"
-            subtitle="Actual requests · UTC day"
+            title="Incidents over time"
+            subtitle="Actual UTC-day aggregates · last 30 days"
           />
           <Timeline data={a?.timeline || []} />
         </div>
         <div className="panel">
           <PanelTitle
-            title="Protection breakdown"
-            subtitle="Findings by category"
+            title="Allowed vs. prevented"
+            subtitle="Actual enforcement outcomes"
+          />
+          <Donut data={a?.actions || []} />
+        </div>
+      </div>
+      <div className="two-columns">
+        <div className="panel">
+          <PanelTitle
+            title="Data categories / attack types"
+            subtitle="Multiple categories may occur in one request"
           />
           <Donut data={a?.categories || []} />
         </div>
-      </div>
-      <div className="panel">
-        <PanelTitle
-          title="Recent security events"
-          subtitle="Content-free audit trail"
-          action={
-            <Link to="/app/monitor">
-              View all <ArrowUpRight size={14} />
-            </Link>
-          }
-        />
-        <EventTable events={(events || []).slice(0, 5)} />
-      </div>
-      <div className="mini-metrics">
-        {a &&
-          [
-            ["Injection attempts", a.injections],
-            ["Denied retrievals", a.unauthorized],
-            ["Model calls prevented", a.calls_prevented],
-            ["Active controls", a.policy_count],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
+        <div className="panel">
+          <PanelTitle
+            title="Risk severity distribution"
+            subtitle="Low 0–24 · Medium 25–49 · High 50–74 · Critical 75–100"
+          />
+          <Donut data={a?.severity || []} />
+        </div>
       </div>
     </>
   );
@@ -1097,14 +1193,33 @@ function Empty({
     </div>
   );
 }
-function Timeline({ data }: { data: Analytics["timeline"] }) {
-  return data.length ? (
-    <ResponsiveContainer width="100%" height={230}>
-      <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+function formatActivityDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    .format(new Date(`${value}T00:00:00Z`));
+}
+function ActivityTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload || {};
+  const total = point.requests ?? payload.reduce((sum: number, item: any) => sum + Number(item.value || 0), 0);
+  return <div className="chart-tooltip">
+    <strong>{formatActivityDate(label)}</strong>
+    <span><i style={{ background: "#3B82F6" }} />Allowed <b>{point.allowed ?? 0}</b></span>
+    <span><i style={{ background: "#D97706" }} />Prevented <b>{point.prevented ?? 0}</b></span>
+    <span><i style={{ background: "#16A34A" }} />Sanitized <b>{point.sanitized ?? 0}</b></span>
+    <span className="chart-tooltip-total">Total requests <b>{total}</b></span>
+  </div>;
+}
+function Timeline({ data, emptyText = "No activity recorded in this period." }: { data: Analytics["timeline"]; emptyText?: string }) {
+  const activeDays = data.filter(point => (point.requests ?? point.allowed + point.prevented + point.sanitized) > 0).length;
+  if (!data.length || activeDays === 0) return <Empty text={emptyText} />;
+  const tickInterval = data.length > 45 ? Math.ceil(data.length / 8) - 1 : data.length > 21 ? 3 : data.length > 10 ? 1 : 0;
+  return <>
+    <ResponsiveContainer width="100%" height={260}>
+      <LineChart data={data} margin={{ top: 8, right: 18, left: 10, bottom: 8 }}>
         <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
-        <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
-        <YAxis allowDecimals={false} stroke="var(--text-muted)" fontSize={11} />
-        <Tooltip contentStyle={chartTooltip} />
+        <XAxis dataKey="date" tickFormatter={formatActivityDate} interval={tickInterval} stroke="var(--text-muted)" fontSize={11} minTickGap={20} />
+        <YAxis allowDecimals={false} domain={[0, "dataMax"]} stroke="var(--text-muted)" fontSize={11} width={42} label={{ value: "Number of requests", angle: -90, position: "insideLeft", fill: "var(--text-muted)", fontSize: 11 }} />
+        <Tooltip content={<ActivityTooltip />} />
         <Legend
           verticalAlign="top"
           align="right"
@@ -1113,37 +1228,50 @@ function Timeline({ data }: { data: Analytics["timeline"] }) {
           wrapperStyle={{ color: "var(--text-muted)", fontSize: 11 }}
         />
         <Line
-          type="monotone"
+          type="linear"
           dataKey="allowed"
           name="Allowed"
-          stroke="var(--status-info)"
+          stroke="#3B82F6"
           strokeWidth={2.5}
-          connectNulls
-          dot={{ r: 3, fill: "var(--brand-amber)" }}
+          dot={false}
+          activeDot={{ r: 5, fill: "#3B82F6" }}
+          isAnimationActive
+          animationBegin={120}
+          animationDuration={900}
+          animationEasing="ease-out"
         />
         <Line
-          type="monotone"
+          type="linear"
           dataKey="prevented"
           name="Prevented"
-          stroke="var(--brand-amber)"
+          stroke="#D97706"
           strokeWidth={2.5}
           connectNulls
-          dot={{ r: 3, fill: "var(--brand-amber)" }}
+          dot={false}
+          activeDot={{ r: 5, fill: "#D97706" }}
+          isAnimationActive
+          animationBegin={260}
+          animationDuration={1000}
+          animationEasing="ease-out"
         />
         <Line
-          type="monotone"
+          type="linear"
           dataKey="sanitized"
           name="Sanitized"
-          stroke="var(--chart-sage)"
+          stroke="#16A34A"
           strokeWidth={2.5}
           connectNulls
-          dot={{ r: 3, fill: "var(--chart-sage)" }}
+          dot={false}
+          activeDot={{ r: 5, fill: "#16A34A" }}
+          isAnimationActive
+          animationBegin={400}
+          animationDuration={1100}
+          animationEasing="ease-out"
         />
       </LineChart>
     </ResponsiveContainer>
-  ) : (
-    <Empty />
-  );
+    {activeDays === 1 && <p className="chart-note">Only one day has recorded activity; more history is needed to establish a trend.</p>}
+  </>;
 }
 function Donut({ data, centerLabel }: { data: { name: string; value: number }[]; centerLabel?: number }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -1166,6 +1294,10 @@ function Donut({ data, centerLabel }: { data: { name: string; value: number }[];
               paddingAngle={4}
               stroke="var(--brand-bg-secondary)"
               strokeWidth={2}
+              isAnimationActive
+              animationBegin={180}
+              animationDuration={1000}
+              animationEasing="ease-out"
             >
               {data.map((_, i) => (
                 <Cell key={i} fill={chartColor(data[i].name, i)} />
@@ -1227,8 +1359,28 @@ function Badge({ value }: { value: string }) {
     </span>
   );
 }
+
+function incidentVerificationUnavailable(event: Incident) {
+  const outcome = (event.outcome || "").toUpperCase();
+  const reason = (event.reason || "").toUpperCase();
+  return event.provider === "mock"
+    || outcome === "NOT IMPLEMENTED"
+    || reason.includes("COMPONENT_UNAVAILABLE")
+    || reason.includes("UNAVAILABLE");
+}
+
+function incidentOutcomeLabel(event: Incident) {
+  return event.action || event.outcome || "Not reported";
+}
+
 function EventTable({ events }: { events: Incident[] }) {
   const [selected, setSelected] = useState<Incident | null>(null);
+  const incidentTrend = events.slice().reverse().map((event, index) => ({
+    name: String(index + 1),
+    risk: event.risk,
+    latency: event.latency,
+    selected: event.id === selected?.id,
+  }));
   return (
     <>
       {events.length ? (
@@ -1236,7 +1388,7 @@ function EventTable({ events }: { events: Incident[] }) {
           <table>
             <thead>
               <tr>
-                <th>Incident / Time</th>
+                <th>Title / Time</th>
                 <th>Category</th>
                 <th>Risk score</th>
                 <th>Action</th>
@@ -1255,9 +1407,9 @@ function EventTable({ events }: { events: Incident[] }) {
                   }}
                 >
                   <td>
-                    <strong className="mono">{e.id}</strong>
+                    <strong className="event-title">{e.title || "Title not recorded"}</strong>
                     <small>
-                      {new Date(e.timestamp).toLocaleTimeString()} · {e.user}
+                      {new Date(e.timestamp).toLocaleString()} · {e.user}
                     </small>
                   </td>
                   <td>{e.categories.join(", ") || "Normal request"}</td>
@@ -1298,7 +1450,7 @@ function EventTable({ events }: { events: Incident[] }) {
       )}
       {selected && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal incident-modal">
             <button
               className="close"
               aria-label="Close incident"
@@ -1306,32 +1458,78 @@ function EventTable({ events }: { events: Incident[] }) {
             >
               <X />
             </button>
-            <span className="section-kicker">SANITIZED INCIDENT DETAILS</span>
-            <h2>{selected.id}</h2>
-            <Badge value={selected.action} />
-            <p>{selected.reason}</p>
-            <div className="detail-list">
-              {[
-                ["Risk", `${selected.risk}/100 · ${selected.severity}`],
-                ["Categories", selected.categories.join(", ") || "None"],
-                ["Policies", selected.policies.join(", ") || "None"],
-                ["Provider", selected.provider],
-                ["Model called", selected.model_called ? "Yes" : "No"],
-                ["Duration", selected.latency + " ms"],
-                ["Outcome", selected.outcome],
-                ["Timestamp", new Date(selected.timestamp).toLocaleString()],
-              ].map(([k, v]) => (
-                <div key={k}>
-                  <span>{k}</span>
-                  <strong>{v}</strong>
-                </div>
-              ))}
+            <div className="incident-detail-column">
+              <span className="section-kicker">SANITIZED INCIDENT DETAILS</span>
+              <h2>{selected.title || "Title not recorded"}</h2>
+              <small className="mono incident-id">{selected.id}</small>
+              <Badge value={selected.action} />
+              <p>{selected.reason}</p>
+              <div className="detail-list">
+                {[
+                  ["Risk", `${selected.risk}/100 · ${selected.severity}`],
+                  ["Categories", selected.categories.join(", ") || "None"],
+                  ["Policies", selected.policies.join(", ") || "None"],
+                  ["Provider", selected.provider],
+                  ["Model called", selected.model_called ? "Yes" : "No"],
+                  ["Duration", selected.latency + " ms"],
+                  ["Outcome", selected.outcome],
+                  ["Timestamp", new Date(selected.timestamp).toLocaleString()],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <span>{k}</span>
+                    <strong>{v}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="privacy-note">
+                Raw prompts and detected values are not retained. Remediation:
+                remove protected data, use anonymized values, and confirm document
+                permission before resubmission.
+              </p>
             </div>
-            <p className="privacy-note">
-              Raw prompts and detected values are not retained. Remediation:
-              remove protected data, use anonymized values, and confirm document
-              permission before resubmission.
-            </p>
+            <div className="incident-analytics-column">
+              <span className="section-kicker">SECURITY INCIDENT SUMMARY</span>
+              <h3>What happened?</h3>
+              <div className="incident-summary-indicators">
+                <div><small>Recorded risk</small><strong>{incidentVerificationUnavailable(selected) && selected.risk === 0 ? "Not assessed" : `${selected.risk}/100`}</strong></div>
+                <div><small>Recorded outcome</small><strong>{incidentOutcomeLabel(selected)}</strong></div>
+                <div><small>Processing time</small><strong>{typeof selected.latency === "number" ? `${selected.latency} ms` : "Not reported"}</strong></div>
+              </div>
+              <div className="incident-meters">
+                <div className="incident-meter">
+                  <div className="incident-meter-heading"><strong>Risk</strong><span>{incidentVerificationUnavailable(selected) && selected.risk === 0 ? "Not assessed" : `${selected.risk}/100`}</span></div>
+                  <div className="incident-meter-track"><i className="risk" style={{ width: `${incidentVerificationUnavailable(selected) && selected.risk === 0 ? 0 : Math.min(100, Math.max(0, selected.risk))}%` }} /></div>
+                  <div className="incident-meter-scale"><span>0</span><span>{incidentVerificationUnavailable(selected) && selected.risk === 0 ? "Unavailable" : selected.risk}</span><span>100</span></div>
+                </div>
+                <div className="incident-meter">
+                  <div className="incident-meter-heading"><strong>Latency</strong><span>{typeof selected.latency === "number" ? `${selected.latency} ms` : "Not reported"}</span></div>
+                  <div className="incident-meter-track"><i className="latency" style={{ width: `${typeof selected.latency === "number" ? Math.min(100, Math.max(0, selected.latency / Math.max(50, selected.latency) * 100)) : 0}%` }} /></div>
+                  <div className="incident-meter-scale"><span>0 ms</span><span>{typeof selected.latency === "number" ? `${selected.latency} ms` : "Unavailable"}</span><span>{typeof selected.latency === "number" ? `${Math.max(50, selected.latency)} ms` : "—"}</span></div>
+                </div>
+              </div>
+              <details className="advanced-analytics">
+                <summary>Advanced analytics</summary>
+                <p className="muted">Historical risk and latency from the records currently loaded in this History view.</p>
+                <div className="incident-chart">
+                  <ResponsiveContainer width="100%" height={230}>
+                    <LineChart data={incidentTrend} margin={{ top: 12, right: 8, left: -18, bottom: 4 }}>
+                      <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+                      <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickFormatter={(value) => `#${value}`} />
+                      <YAxis stroke="var(--text-muted)" fontSize={11} />
+                      <Tooltip contentStyle={chartTooltip} />
+                      <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 11 }} />
+                      <Line type="monotone" dataKey="risk" name="Risk score" stroke="var(--status-danger)" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive animationDuration={700} />
+                      <Line type="monotone" dataKey="latency" name="Latency (ms)" stroke="var(--brand-amber)" strokeWidth={2.5} dot={{ r: 3 }} isAnimationActive animationBegin={150} animationDuration={850} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="incident-analytics-stats">
+                  <div><small>Selected risk</small><strong>{selected.risk}/100</strong></div>
+                  <div><small>Selected latency</small><strong>{selected.latency} ms</strong></div>
+                  <div><small>Records in view</small><strong>{events.length}</strong></div>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
       )}
@@ -1374,6 +1572,7 @@ function SecureChat() {
   >([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [loadedPreset, setLoadedPreset] = useState<{
     title: string;
     code: string;
@@ -1388,7 +1587,40 @@ function SecureChat() {
     setLoadedPreset({ title: preset.title, code: preset.code, expectedAction: preset.expectedAction });
   }, [location.key]);
 
-  const { data: docs } = useData<Doc[]>("/documents");
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      let lastId = "";
+      for (const file of files) {
+        const extension = file.name.split(".").pop()?.toLowerCase() || "";
+        const textLike = file.type.startsWith("text/") || ["json", "csv", "md", "xml", "yaml", "yml", "log"].includes(extension);
+        const content = textLike ? (await file.text()).slice(0, 20000) : null;
+        const dataBase64 = textLike ? undefined : await fileBase64(file);
+        const uploaded = await api<{ id: string; processing_status?: string }>("/documents/upload", {
+          method: "POST",
+          body: JSON.stringify({
+            filename: file.name,
+            mime_type: file.type || "application/octet-stream",
+            size_bytes: file.size,
+            content,
+            data_base64: dataBase64,
+          }),
+        });
+        if (uploaded.processing_status !== "ready") {
+          setError(`${file.name} was stored, but this file type is not ready for chat processing yet.`);
+        } else {
+          lastId = uploaded.id;
+        }
+      }
+      if (lastId) setDoc(lastId);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const send = async (text = prompt, did = doc) => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -1415,13 +1647,9 @@ function SecureChat() {
     }
   };
   return (
-    <>
-      <PageHead
-        kicker="02 / AI SECURE CHAT"
-        title="Ideas in. Exposure out."
-        description="Requests use the approved security pipeline. Unavailable checks fail closed."
-      />
-      <div className="chat-layout">
+    <div className="chat-page">
+      <div className="chat-kicker">AI SECURE CHAT</div>
+      <div className="chat-layout chat-layout-single">
         <section className="panel chat-panel">
           <div className="chat-title">
             <span>
@@ -1558,18 +1786,6 @@ function SecureChat() {
               send();
             }}
           >
-            <select
-              aria-label="Authorized document"
-              value={doc}
-              onChange={(e) => setDoc(e.target.value)}
-            >
-              <option value="">Automatic authorized context</option>
-              {docs?.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.title}
-                </option>
-              ))}
-            </select>
             <div>
               <textarea
                 aria-label="Prompt"
@@ -1584,6 +1800,20 @@ function SecureChat() {
                   }
                 }}
               />
+              <label className="composer-add-document">
+                <Upload size={14} /> Upload
+                <input
+                  type="file"
+                  multiple
+                  accept="*/*"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setAttachments(files);
+                    void uploadFiles(files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
               <button
                 className="send"
                 aria-label="Send prompt"
@@ -1592,94 +1822,30 @@ function SecureChat() {
                 <ArrowUpRight size={22} />
               </button>
             </div>
+            {attachments.length > 0 && (
+              <div className="composer-attachments" aria-live="polite">
+                {attachments.map((file) => (
+                  <span key={`${file.name}-${file.lastModified}`}>
+                    <FileLock2 size={13} /> {file.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.name}`}
+                      onClick={() => setAttachments((items) => items.filter((item) => item !== file))}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <small>
               <LockKeyhole size={11} /> Input inspected before model invocation
               · Output inspected before delivery
             </small>
           </form>
         </section>
-        <aside className="chat-aside">
-          <Link
-            to="/app/demos"
-            className="demo-tour-btn primary"
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              marginBottom: "14px",
-              boxSizing: "border-box",
-            }}
-          >
-            <Sparkles size={14} /> Open Demo Studio ({FEATURE_PRESETS.length} Presets)
-          </Link>
-          <div className="panel">
-            <PanelTitle
-              title="Feature Presets"
-              subtitle="Quick-load synthetic scenarios"
-            />
-            {FEATURE_PRESETS.filter((preset) => preset.availability === "retained").slice(0, 6).map((d) => (
-              <button
-                className="demo-card"
-                key={d.id}
-                disabled={busy}
-                onClick={() => {
-                  setPrompt(d.prompt);
-                  setDoc(d.document_id || "");
-                  setLoadedPreset({
-                    title: d.title,
-                    code: d.code,
-                    expectedAction: d.expectedAction,
-                  });
-                }}
-              >
-                <span>
-                  {d.code}
-                  <Badge value={d.expectedAction} />
-                </span>
-                <strong>{d.title}</strong>
-                <small>{d.highlight}</small>
-                <ArrowUpRight size={16} />
-              </button>
-            ))}
-            <Link
-              to="/app/demos"
-              style={{
-                display: "block",
-                textAlign: "center",
-                padding: "8px",
-                fontSize: "10px",
-                color: "var(--brand-amber)",
-                border: "1px dashed var(--border-active)",
-                borderRadius: "6px",
-                marginTop: "10px",
-              }}
-            >
-              View all {FEATURE_PRESETS.length} feature presets & walkthroughs →
-            </Link>
-            <p className="privacy-note">
-              Scenarios load a prompt. Press send to run it. Switch accounts to
-              compare document permissions.
-            </p>
-          </div>
-          <div className="panel pipeline">
-            <span className="section-kicker">ENFORCEMENT PATH</span>
-            {[
-              "Authenticate identity",
-              "Inspect prompt",
-              "Apply prevention policies",
-              "Authorize document context",
-              "Inspect model response",
-              "Write private audit event",
-            ].map((s, i) => (
-              <div key={s}>
-                <span>{i + 1}</span>
-                {s}
-                <Check size={13} />
-              </div>
-            ))}
-          </div>
-        </aside>
       </div>
-    </>
+    </div>
   );
 }
 function Monitor() {
@@ -1769,112 +1935,68 @@ function Monitor() {
     </>
   );
 }
-function AnalyticsPage() {
-  const { data: a, error, refresh } = useData<Analytics>("/analytics");
-  const { data: report } = useData<any>("/evaluation");
-  return (
-    <>
-      <PageHead
-        kicker="04 / DATA LEAKAGE ANALYTICS"
-        title="See the bigger picture."
-        description="Measured gateway activity, grounded in the audit database."
-      >
-        <button className="outline" onClick={refresh}>
-          <RefreshCw size={16} /> Refresh
-        </button>
-      </PageHead>
-      <ErrorBox error={error} />
-      <div className="metrics">
-        {a && (
-          <>
-            <Metric
-              label="Sensitive findings"
-              value={a.sensitive}
-              icon={Fingerprint}
-              detail="Requests with detected categories"
-            />
-            <Metric
-              label="High-risk incidents"
-              value={a.high_risk}
-              icon={Shield}
-              detail="Risk score 50 or greater"
-            />
-            <Metric
-              label="Detection recall"
-              value={
-                report?.metrics ? report.metrics.recall + "%" : "Not measured"
-              }
-              icon={FlaskConical}
-              detail="Measured synthetic evaluation suite"
-            />
-            <Metric
-              label="False-positive rate"
-              value={
-                report?.metrics
-                  ? report.metrics.false_positive_rate + "%"
-                  : "Not measured"
-              }
-              icon={Activity}
-              detail="Measured legitimate evaluation cases"
-            />
-          </>
-        )}
+function SettingsAccess() {
+  const { data, error, refresh } = useData<SettingsAccessData>("/settings/access");
+  const [employeeId, setEmployeeId] = useState("");
+  const [scope, setScope] = useState<ResourceScope>("all");
+  const [days, setDays] = useState(30);
+  const [activity, setActivity] = useState<EmployeeActivity | null>(null);
+  const [message, setMessage] = useState("");
+  const employee = data?.employees.find((item) => item.id === employeeId) || data?.employees[0];
+  const visibleResources = (data?.resources || []).filter((resource) => {
+    if (!employee) return false;
+    const access = resource.access[employee.id];
+    return scope === "all" ? access !== "none" : scope === "limited" ? access === "shared" : access === "owner";
+  });
+
+  useEffect(() => {
+    if (!employeeId && data?.employees[0]) setEmployeeId(data.employees[0].id);
+  }, [data, employeeId]);
+  useEffect(() => {
+    if (!employee) return;
+    api<EmployeeActivity>(`/settings/activity?employee_id=${employee.id}&days=${days}&scope=${scope}`)
+      .then(setActivity).catch((e) => setMessage((e as Error).message));
+  }, [employee?.id, days, scope]);
+  const saveMonitoring = async (level: string) => {
+    if (!employee) return;
+    try {
+      await api(`/settings/access/${employee.id}/monitoring`, { method: "PUT", body: JSON.stringify({ level }) });
+      setMessage("Activity monitoring preference saved."); refresh();
+    } catch (e) { setMessage((e as Error).message); }
+  };
+  const changeAccess = async (resource: SettingsResource) => {
+    if (!employee || resource.access[employee.id] === "owner" || resource.access[employee.id] === "public") return;
+    const granted = resource.access[employee.id] !== "shared";
+    if (!granted && !window.confirm(`Revoke ${resource.name} from ${employee.name}?`)) return;
+    try {
+      await api(`/settings/access/${employee.id}/resources/${resource.id}`, { method: "PUT", body: JSON.stringify({ allowed: granted }) });
+      setMessage(`${granted ? "Access granted to" : "Access revoked from"} ${employee.name}.`); refresh();
+    } catch (e) { setMessage((e as Error).message); }
+  };
+  return <>
+    <PageHead kicker="ADMINISTRATION" title="Settings & Access" description="Manage employee access, shared resources, and activity visibility across your workspace." />
+    <ErrorBox error={error} />
+    {message && <div className="notice" role="status">{message}</div>}
+    <section className="panel settings-section">
+      <PanelTitle title="Employee Access" subtitle="Review who can access workspace resources." />
+      <div className="settings-toolbar"><input aria-label="Search employees" placeholder="Search employees" /><select aria-label="Select employee" value={employee?.id || ""} onChange={(e) => setEmployeeId(e.target.value)}>{data?.employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+      <div className="settings-table"><div className="settings-row settings-header"><span>Employee</span><span>Status</span><span>Resources</span><span>Monitoring</span></div>
+        {data?.employees.map((item) => <div className="settings-row" key={item.id}><span><strong>{item.name}</strong><small>{item.email}</small></span><span className="status-success">{item.status}</span><span>{item.resource_count}</span><select value={item.monitoring_level} onChange={(e) => { setEmployeeId(item.id); void saveMonitoring(e.target.value); }}><option value="summary">Summary only</option><option value="security">Security events</option><option value="full">Full metadata</option></select></div>)}
       </div>
-      <div className="two-columns">
-        <div className="panel">
-          <PanelTitle
-            title="Incidents over time"
-            subtitle="Actual UTC-day aggregates"
-          />
-          <Timeline data={a?.timeline || []} />
-        </div>
-        <div className="panel">
-          <PanelTitle
-            title="Allowed vs. prevented"
-            subtitle="Actual enforcement outcomes"
-          />
-          <Donut data={a?.actions || []} />
-        </div>
-        <div className="panel">
-          <PanelTitle
-            title="Data categories / attack types"
-            subtitle="Multiple categories may occur in one request"
-          />
-          <Donut data={a?.categories || []} />
-        </div>
-        <div className="panel">
-          <PanelTitle
-            title="Risk severity distribution"
-            subtitle="Low 0–24 · Medium 25–49 · High 50–74 · Critical 75–100"
-          />
-          <Donut data={a?.severity || []} />
-        </div>
-      </div>
-      <div className="panel">
-        <PanelTitle
-          title="Policy effectiveness"
-          subtitle="Number of events matching each configurable policy"
-        />
-        {a?.total ? (
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={a.policy_effectiveness}>
-              <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-              <XAxis dataKey="name" fontSize={10} stroke="var(--text-muted)" />
-              <YAxis allowDecimals={false} stroke="var(--text-muted)" />
-              <Tooltip contentStyle={chartTooltip} />
-              <Bar
-                dataKey="value"
-                fill="var(--brand-amber)"
-                radius={[5, 5, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <Empty />
-        )}
-      </div>
-    </>
-  );
+    </section>
+    <section className="panel settings-section">
+      <PanelTitle title="Resource Permissions" subtitle="Who can access what? Changes are enforced server-side." />
+      <div className="settings-toolbar"><label>Employee <select value={employee?.id || ""} onChange={(e) => setEmployeeId(e.target.value)}>{data?.employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Scope <select value={scope} onChange={(e) => setScope(e.target.value as ResourceScope)}><option value="all">All Resources</option><option value="limited">Limited Resources</option><option value="mine">My Resources</option></select></label></div>
+      <div className="settings-table"><div className="settings-row settings-header"><span>Resource</span><span>Owner</span><span>Access</span><span>Action</span></div>{visibleResources.map((resource) => <div className="settings-row" key={resource.id}><span><strong>{resource.name}</strong><small>{resource.type}</small></span><span>{resource.owner}</span><span>{resource.access[employee?.id || ""]}</span><button className="outline" disabled={!employee || resource.access[employee.id] === "owner" || resource.access[employee.id] === "public"} onClick={() => void changeAccess(resource)}>{resource.access[employee?.id || ""] === "shared" ? "Revoke" : "Grant"}</button></div>)}{!visibleResources.length && <Empty text="No resources match this scope." />}</div>
+    </section>
+    <section className="panel settings-section">
+      <PanelTitle title="Activity Monitoring" subtitle="Privacy-safe metadata only; raw prompts and responses are never exposed." />
+      <div className="settings-toolbar"><label>Employee <select value={employee?.id || ""} onChange={(e) => setEmployeeId(e.target.value)}>{data?.employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Date range <select value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select></label><label>Resource scope <select value={scope} onChange={(e) => setScope(e.target.value as ResourceScope)}><option value="all">All Resources</option><option value="limited">Limited Resources</option><option value="mine">My Resources</option></select></label></div>
+      <div className="settings-metrics"><Metric label="Total requests" value={activity?.total ?? "—"} icon={Activity} detail="Recorded requests" /><Metric label="Blocked" value={activity?.blocked ?? "—"} icon={Shield} detail="Prevented requests" /><Metric label="Masked / hashed" value={activity ? `${activity.masked} / ${activity.hashed}` : "—"} icon={Fingerprint} detail="Sanitized events" /><Metric label="Pending" value={activity?.pending ?? "—"} icon={CircleDot} detail="Approval requests" /></div>
+      <div className="settings-monitoring-note">Configured level: <strong>{employee?.monitoring_level === "full" ? "Full activity metadata" : employee?.monitoring_level === "security" ? "Security events" : "Summary only"}</strong></div>
+      {activity?.events?.length ? <EventTable events={activity.events as Incident[]} /> : <Empty text="No activity recorded for this employee and scope." />}
+    </section>
+  </>;
 }
 function Policies() {
   const { data, error, refresh } = useData<Policy[]>("/policies");
@@ -2073,124 +2195,94 @@ function PolicyCard({
   );
 }
 function Documents({ user }: { user: User }) {
-  const { data, error, refresh } = useData<Doc[]>("/documents");
-  const [upload, setUpload] = useState(false);
-  const [editing, setEditing] = useState<Doc | null>(null);
+  const { data, error, refresh } = useData<Doc[]>("/documents/vault");
+  const [retention, setRetention] = useState("1_week");
+  const [retentionLoading, setRetentionLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<{ policy: string }>("/me/document-retention")
+      .then((value) => setRetention(value.policy))
+      .catch((e: Error) => setMessage(e.message))
+      .finally(() => setRetentionLoading(false));
+  }, []);
+  const changeRetention = async (policy: string) => {
+    setRetention(policy);
+    setRetentionLoading(true);
+    try {
+      await api("/me/document-retention", { method: "PUT", body: JSON.stringify({ policy }) });
+      setMessage("Retention preference saved for future uploads.");
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setRetentionLoading(false);
+    }
+  };
+  const deleteDocument = async (document: Doc) => {
+    if (!window.confirm(`Delete ${document.title} now? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await api(`/documents/${document.id}`, { method: "DELETE" });
+      setMessage("Document deleted.");
+      refresh();
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const formatSize = (size?: number | null) => {
+    if (size == null) return "Size unavailable";
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
   return (
     <>
       <PageHead
-        kicker="06 / DOCUMENT SECURITY"
-        title="Knowledge with boundaries."
-        description="Only documents authorized for your account are listed."
+        kicker="DOCUMENT SECURITY"
+        kickerClassName="vault-kicker"
+        title="My Document Vault"
+        description="Your uploaded documents, stored securely and automatically deleted according to your retention preference."
       >
-        <button className="primary" onClick={() => setUpload(true)}>
-          <Upload size={16} /> Add document
-        </button>
+        <Link className="primary" to="/app/chat"><MessageSquare size={16} /> Upload in Secure Chat</Link>
       </PageHead>
       <ErrorBox error={error} />
       {message && <div className="notice">{message}</div>}
-      <div className="notice">
-        <LockKeyhole size={16} /> Identity and roles come from your
-        authenticated session. Authorization is checked before any content is
-        retrieved.
-      </div>
-      <div className="document-grid">
-        {data?.map((d) => (
-          <article className="panel document-card" key={d.id}>
-            <div className="document-top">
-              <FileLock2 size={28} />
-              <Badge value={d.classification} />
-            </div>
-            <h3>{d.title}</h3>
-            <p>
-              {d.id} · {d.source}
-            </p>
-            <div className="detail-list">
-              <div>
-                <span>Owner</span>
-                <strong>{d.owner_id}</strong>
-              </div>
-              <div>
-                <span>Permitted users</span>
-                <strong>{d.allowed_users.join(", ") || "Owner only"}</strong>
-              </div>
-              <div>
-                <span>Permitted roles</span>
-                <strong>
-                  {d.classification === "PUBLIC"
-                    ? "All accounts"
-                    : d.allowed_roles.join(", ") || "None"}
-                </strong>
-              </div>
-            </div>
-            <div className="document-actions">
-              <button
-                className="outline"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    setResult(
-                      await api<Result>("/chat", {
-                        method: "POST",
-                        body: JSON.stringify({
-                          prompt: "Summarize the selected document.",
-                          document_id: d.id,
-                        }),
-                      }),
-                    );
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Test retrieval <ArrowUpRight size={15} />
-              </button>
-              {(d.owner_id === user.id || user.role === "admin") && (
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setEditing(d);
-                    setUpload(true);
-                  }}
-                >
-                  Edit access
-                </button>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
-      {result && (
-        <div className="panel">
-          <PanelTitle title="Retrieval test result" subtitle={result.id} />
-          <Badge value={result.action} />
-          <p>{result.response}</p>
-          <small>
-            {result.model_called ? "Model called" : "Model prevented"} ·{" "}
-            {result.context_count} authorized chunks · {result.reason}
-          </small>
+      <section className="panel retention-setting">
+        <div>
+          <strong>Automatically delete documents after</strong>
+          <small>Documents are automatically deleted when their retention period ends.</small>
         </div>
-      )}
-      {upload && (
-        <DocumentForm
-          doc={editing}
-          onClose={() => {
-            setUpload(false);
-            setEditing(null);
-          }}
-          onSaved={() => {
-            setUpload(false);
-            setEditing(null);
-            refresh();
-            setMessage("Document saved with server-enforced permissions.");
-          }}
-        />
+        <select aria-label="Document retention period" value={retention} disabled={retentionLoading} onChange={(e) => void changeRetention(e.target.value)}>
+          <option value="1_week">1 week</option>
+          <option value="1_month">1 month</option>
+          <option value="1_quarter">1 quarter</option>
+          <option value="1_year">1 year</option>
+        </select>
+      </section>
+      {data?.length ? (
+        <div className="vault-list">
+          {data.map((d) => (
+            <article className="panel vault-document" key={d.id}>
+              <div className="vault-document-icon"><FileLock2 size={22} /></div>
+              <div className="vault-document-main">
+                <strong>{d.title}</strong>
+                <small>{d.mime_type || "File type unavailable"} · {formatSize(d.size_bytes)} · Uploaded {new Date(d.created_at).toLocaleString()}</small>
+                <small>Automatically deleted {d.delete_at ? new Date(d.delete_at).toLocaleString() : "according to retention policy"} · {d.retention_label || "Retention set"}</small>
+                <small>Status: {d.processing_status === "uploaded_unprocessed" ? "Stored; processing not available for this file type" : "Ready"}</small>
+              </div>
+              <button className="text-button vault-delete" disabled={busy} onClick={() => void deleteDocument(d)}>Delete now</button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="panel vault-empty">
+          <FileLock2 size={30} />
+          <strong>No documents stored yet</strong>
+          <p>Documents you upload in Secure Chat will appear here.</p>
+          <Link className="outline" to="/app/chat">Go to Secure Chat</Link>
+        </div>
       )}
     </>
   );

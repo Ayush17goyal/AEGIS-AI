@@ -311,7 +311,7 @@ test("ID-only handoff resolves catalog, is consumed, and never stores prompt", (
     assert.equal(values.size, 0);
   }
 });
-test("server-rendered studio preserves card anatomy, pending handoffs and nonadmin guidance", () => {
+test("server-rendered studio preserves category navigation and nonadmin guidance", () => {
   const React = require("react");
   const { renderToStaticMarkup } = require("react-dom/server");
   const { MemoryRouter } = require("react-router-dom");
@@ -329,20 +329,18 @@ test("server-rendered studio preserves card anatomy, pending handoffs and nonadm
     ),
   );
   for (const name of [
-    "preset-title",
-    "preset-summary",
-    "preset-talking-box",
-    "preset-talking-header",
-    "preset-talking-list",
-    "preset-payload-box",
+    "protection-choices",
+    "protection-choice-card",
+    "Protect personal information",
+    "Protect passwords and keys",
+    "Stop malicious instructions",
+    "Protect documents",
+    "Control access and approvals",
+    "demo-environment-details",
   ])
     assert.ok(html.includes(name));
-  assert.equal((html.match(/class="preset-card-full"/g) || []).length, 20);
   assert.ok(html.includes("sign out and sign in"));
   assert.ok(!html.includes("Switch to admin"));
-  assert.equal(
-    (html.match(/class="preset-chat-btn" disabled=""/g) || []).length,
-    3,
-  );
+  assert.equal((html.match(/class="demo-option/g) || []).length, 0);
   assert.ok(!html.includes("INVARIANT VERIFIED"));
 });

@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, Float, JSON, Text
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, Float, JSON, Text, text, inspect as sqlalchemy_inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -29,6 +29,29 @@ class Document(Base):
     classification = Column(String)
     source = Column(String, default='synthetic demo')
     created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
+    filename = Column(String, nullable=True)
+    mime_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    retention_policy = Column(String, nullable=True)
+    delete_at = Column(String, nullable=True)
+    processing_status = Column(String, default='ready')
+    deletion_status = Column(String, default='active')
+    deleted_at = Column(String, nullable=True)
+
+class UserPreference(Base):
+    __tablename__ = 'user_preferences'
+    user_id = Column(String, primary_key=True)
+    document_retention = Column(String, default='1_week')
+    monitoring_level = Column(String, default='summary')
+
+class AdminAudit(Base):
+    __tablename__ = 'admin_audits'
+    id = Column(String, primary_key=True)
+    administrator_id = Column(String)
+    action = Column(String)
+    target_id = Column(String)
+    timestamp = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
+    outcome = Column(String)
 
 class Event(Base):
     __tablename__ = 'events'
@@ -45,6 +68,8 @@ class Event(Base):
     provider = Column(String)
     latency = Column(Float)
     reason = Column(String)
+    title = Column(String, nullable=True)
+    resource_id = Column(String, nullable=True)
 
 class Approval(Base):
     __tablename__ = 'approvals'
@@ -55,6 +80,28 @@ class Approval(Base):
 
 def init_db(session_factory=Session, target_engine=engine):
     Base.metadata.create_all(target_engine)
+    # Keep existing local databases compatible with the privacy-safe request title.
+    columns = {column["name"] for column in sqlalchemy_inspect(target_engine).get_columns("events")}
+    if "title" not in columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE events ADD COLUMN title VARCHAR"))
+    if "resource_id" not in columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE events ADD COLUMN resource_id VARCHAR"))
+    document_columns = {column["name"] for column in sqlalchemy_inspect(target_engine).get_columns("documents")}
+    migrations = {
+        "filename": "VARCHAR", "mime_type": "VARCHAR", "size_bytes": "INTEGER",
+        "retention_policy": "VARCHAR", "delete_at": "VARCHAR", "processing_status": "VARCHAR",
+        "deletion_status": "VARCHAR", "deleted_at": "VARCHAR",
+    }
+    with target_engine.begin() as connection:
+        for name, kind in migrations.items():
+            if name not in document_columns:
+                connection.execute(text(f"ALTER TABLE documents ADD COLUMN {name} {kind}"))
+    preference_columns = {column["name"] for column in sqlalchemy_inspect(target_engine).get_columns("user_preferences")}
+    if "monitoring_level" not in preference_columns:
+        with target_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE user_preferences ADD COLUMN monitoring_level VARCHAR DEFAULT 'summary'"))
     with session_factory() as db:
         if not db.query(Policy).first():
             for pid, name, category, action, threshold, description in [

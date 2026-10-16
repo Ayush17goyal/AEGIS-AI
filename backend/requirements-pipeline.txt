@@ -1,0 +1,13 @@
+cryptography
+argon2-cffi
+nemoguardrails==0.24.1
+laya
+transformers<5
+torch
+pytesseract
+Pillow
+pypdf
+pdf2image
+python-docx
+presidio-analyzer
+spacy

@@ -1,0 +1,9 @@
+define bot refuse unsafe input
+  "I can't help with that request. It appears to override my instructions or to extract protected information."
+
+define flow aegis input rail
+  $result = execute aegis_inspect_input(text=$user_message)
+
+  if $result["blocked"]
+    bot refuse unsafe input
+    stop

@@ -1,0 +1,16 @@
+# AEGIS AI input guardrails (NeMo Guardrails, Colang 1.0).
+# Verified against nemoguardrails 0.24.1 on 2026-10-15; re-verify after any upgrade.
+#
+# Scope: jailbreak / prompt-injection / extraction signals only.
+# Not in scope here: authorization (access_control.py), PII masking (privacy layer),
+# approval decisions (policy_engine.py). NeMo reports a signal; the policy engine decides.
+colang_version: "1.0"
+
+# No LLM is configured on purpose: every input rail below is deterministic, so the
+# input stage needs no model call and adds no provider latency or data egress.
+models: []
+
+rails:
+  input:
+    flows:
+      - aegis input rail

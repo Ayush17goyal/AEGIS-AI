@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import os
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from .database import Event, Document, Policy, Approval
 from .detectors import inspect, sanitize
 from . import providers
@@ -16,6 +16,12 @@ def permitted_documents(db,user,document_id=None):
     # Permission filter is applied before ranking, chunking, or exposing metadata.
     from sqlalchemy import or_, exists, select, func, cast
     query = db.query(Document)
+    now = datetime.now(timezone.utc).isoformat()
+    query = query.filter(
+        or_(Document.deletion_status.is_(None), Document.deletion_status == 'active'),
+        or_(Document.delete_at.is_(None), Document.delete_at > now),
+        or_(Document.processing_status.is_(None), Document.processing_status == 'ready'),
+    )
     if document_id:
         query = query.filter(Document.id == document_id)
     if user['role'] != 'admin':
@@ -32,6 +38,13 @@ def permitted_documents(db,user,document_id=None):
     return query.all()
 
 def severity(score): return 'Critical' if score>=75 else 'High' if score>=50 else 'Medium' if score>=25 else 'Low'
+
+def safe_event_title(prompt, document_id=None):
+    """Keep a short, useful request title without retaining detected values."""
+    title=' '.join(sanitize(prompt or '', inspect(prompt or '')).split())
+    if not title:
+        title='Document request' if document_id else 'Security request'
+    return title[:120]
 
 pending_requests={}
 
@@ -89,7 +102,7 @@ async def run(db,user,prompt,document_id=None,approval_granted=False):
     pseudonym=hmac.new(os.getenv('AUDIT_HMAC_KEY','local-demo-only').encode(),user['id'].encode(),hashlib.sha256).hexdigest()[:10]
     cutoff=(datetime.now(timezone.utc)-timedelta(days=int(os.getenv('AUDIT_RETENTION_DAYS','30')))).isoformat()
     db.execute(delete(Event).where(Event.timestamp<cutoff))
-    db.add(Event(id=event_id,timestamp=datetime.now(timezone.utc).isoformat(),user='usr-'+pseudonym,categories=sorted(set(f.category for f in findings)) if action!='ACCESS DENY' else ['AUTHORIZATION'],risk=round(score),severity=severity(score),policies=list(set(policies)),action=action,outcome='prevented' if action in ('BLOCK','ACCESS DENY') else 'pending' if action=='REQUIRE APPROVAL' else 'error' if action=='ERROR' else 'protected' if action in ('MASK','REDACT','HASH') else 'allowed',model_called=called,provider=providers.provider.name,latency=latency,reason=reason))
+    db.add(Event(id=event_id,timestamp=datetime.now(timezone.utc).isoformat(),user='usr-'+pseudonym,title=safe_event_title(prompt,document_id),resource_id=document_id,categories=sorted(set(f.category for f in findings)) if action!='ACCESS DENY' else ['AUTHORIZATION'],risk=round(score),severity=severity(score),policies=list(set(policies)),action=action,outcome='prevented' if action in ('BLOCK','ACCESS DENY') else 'pending' if action=='REQUIRE APPROVAL' else 'error' if action=='ERROR' else 'protected' if action in ('MASK','REDACT','HASH') else 'allowed',model_called=called,provider=providers.provider.name,latency=latency,reason=reason))
     if action=='REQUIRE APPROVAL':
         aid=uuid.uuid4().hex
         db.add(Approval(id=aid,event_id=event_id))

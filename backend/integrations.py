@@ -3,6 +3,7 @@ import asyncio
 import importlib.util
 import os
 import re
+import json
 from pathlib import Path
 from functools import lru_cache
 from .privacy import Signal
@@ -13,10 +14,58 @@ class ComponentUnavailable(RuntimeError):
 
 
 class LayaAdapter:
-    # No guessed package/API contract: the selected model is not identified in
-    # Architecture v2. Implement only after its repository and labels are verified.
+    """Adapter for the ZIP-delivered Laya scorer and privacy gate.
+
+    The model is loaded only when LAYA_MODEL_DIR and vault keys are configured;
+    otherwise the approved pipeline reports an explicit unavailable state.
+    """
+    def __init__(self):
+        self._gate = None
+
+    def _get_gate(self):
+        if self._gate is not None:
+            return self._gate
+        model_dir = os.getenv("LAYA_MODEL_DIR", "")
+        if not model_dir or not Path(model_dir).is_dir():
+            raise ComponentUnavailable("LAYA_MODEL_DIR is missing or invalid")
+        try:
+            from .secure_layers.encryption_layer import AesGcmService, Fingerprinter, KeyManager, TokenVault
+            from .secure_layers.laya_adapter import LayaScorer
+            from .secure_layers.privacy_gate import PrivacyGate
+            keys = os.getenv("LEAK_GW_KEYS", "")
+            kid = os.getenv("LEAK_GW_CURRENT_KID", "k1")
+            if not keys:
+                vault_key = os.getenv("AEGIS_VAULT_KEY", "")
+                if not vault_key:
+                    raise ComponentUnavailable("Vault key configuration is missing")
+                keys = json.dumps({kid: vault_key})
+            key_manager = KeyManager(json.loads(keys), kid)
+            scorer = LayaScorer(model_dir)
+            self._gate = PrivacyGate(TokenVault(AesGcmService(key_manager), Fingerprinter(key_manager)), scorer)
+            return self._gate
+        except ComponentUnavailable:
+            raise
+        except Exception:
+            raise ComponentUnavailable("Laya model or privacy layer could not be initialized") from None
+
     async def inspect(self, text):
-        raise ComponentUnavailable("Laya model identity and inference contract are unresolved")
+        gate = self._get_gate()
+        try:
+            _, decisions, _degraded = await asyncio.to_thread(gate.analyze, text)
+        except Exception:
+            raise ComponentUnavailable("Laya inspection failed") from None
+        findings = []
+        for decision in decisions:
+            if not decision.sensitive:
+                continue
+            category = "SECRET" if decision.kind in {"SECRET", "CREDENTIAL"} else "FINANCIAL" if decision.kind in {"CARD", "PAN", "AADHAAR", "ACCOUNT"} else "PII"
+            findings.append(Signal(category, decision.kind, decision.start, decision.end, round((decision.p_sensitive or 1.0) * 100)))
+        return {"action": "MASK" if findings else "ALLOW", "findings": findings}
+
+    async def protect(self, text, *, user_id, request_id, label_prefix=""):
+        gate = self._get_gate()
+        return await asyncio.to_thread(gate.protect, text, user_id=user_id,
+                                       request_id=request_id, label_prefix=label_prefix)
 
 
 @lru_cache(maxsize=1)
@@ -87,7 +136,15 @@ def component_status():
             components.append({"name": name, "status": "configured", "detail": "Initialized locally; request-time failures still fail closed"})
         except Exception:
             components.append({"name": name, "status": "missing", "detail": "Package, local model, or input-rail configuration unavailable"})
-    components.append({"name": "Laya", "status": "missing", "detail": "Selected model repository and inference contract have not been provided"})
+    laya_dir = os.getenv("LAYA_MODEL_DIR", "")
+    try:
+        import laya  # noqa: F401
+        laya_ready = bool(laya_dir and Path(laya_dir).is_dir() and
+                          (os.getenv("LEAK_GW_KEYS") or os.getenv("AEGIS_VAULT_KEY")))
+    except Exception:
+        laya_ready = False
+    components.append({"name": "Laya", "status": "configured" if laya_ready else "missing",
+                       "detail": "ZIP scorer and privacy gate available" if laya_ready else "Set LAYA_MODEL_DIR and install the verified Laya runtime"})
     from .providers import provider
     live = provider.name == "hosted" and bool(os.getenv("LLM_API_KEY"))
     components.append({"name": "Real LLM", "status": "configured" if live else "missing", "detail": "Hosted configuration present; connectivity unverified" if live else "Offline mock is not a live model"})

@@ -5,12 +5,16 @@ import {
   MessageSquare,
   Terminal,
   Shield,
+  UserRound,
+  KeyRound,
+  ShieldAlert,
+  FileText,
+  LockKeyhole,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
 import {
   FEATURE_PRESETS,
-  PRESET_CATEGORIES,
   DEMO_TOUR_STEPS,
   type DemoPreset,
 } from "../presets";
@@ -40,16 +44,82 @@ const displayList = (value: unknown) =>
     ? value.join(", ") || "none"
     : "not reported";
 
+const PROTECTION_CHOICES = [
+  { id: "PERSONAL", label: "Protect personal information", description: "Keep personal details private when using AI.", icon: UserRound },
+  { id: "SECRETS", label: "Protect passwords and keys", description: "Stop passwords and secret keys from leaking.", icon: KeyRound },
+  { id: "THREATS", label: "Stop malicious instructions", description: "Prevent people from tricking AI into breaking its rules.", icon: ShieldAlert },
+  { id: "DOCUMENTS", label: "Protect documents", description: "Keep documents and AI answers safe.", icon: FileText },
+  { id: "ACCESS", label: "Control access and approvals", description: "Make sure only authorized people can access protected information.", icon: LockKeyhole },
+] as const;
+
+const demoGroup = (preset: DemoPreset) => {
+  if (["PII", "FINANCIAL"].includes(preset.category)) return "PERSONAL";
+  if (preset.category === "SECRET") return "SECRETS";
+  if (["RAG", "APPROVAL"].includes(preset.category)) return "ACCESS";
+  if (preset.category === "OUTPUT" || preset.id === "preset-inj-indirect") return "DOCUMENTS";
+  return "THREATS";
+};
+
+const FRIENDLY_TITLES: Record<string, string> = {
+  "preset-aadhaar-valid": "Aadhaar Number Protection",
+  "preset-aadhaar-unverified": "Unverified Identity Number Check",
+  "preset-pan-tax": "PAN Number Protection",
+  "preset-contact-pii": "Contact Information Protection",
+  "preset-payment-card": "Payment Card Protection",
+  "preset-banking-ifsc": "Banking Details Protection",
+  "preset-secret-aws": "Cloud Credentials Protection",
+  "preset-secret-openai": "API Key Protection",
+  "preset-secret-db": "Database Password Protection",
+  "preset-secret-rsa": "Private Key Protection",
+  "preset-secret-bearer": "Access Token Protection",
+  "preset-inj-override": "Instruction Override Protection",
+  "preset-inj-persona": "Developer Mode Bypass Protection",
+  "preset-inj-zerowidth": "Hidden Prompt Attack Protection",
+  "preset-benign-edu": "Safe Security Question",
+  "preset-inj-indirect": "Unsafe Document Instruction Protection",
+  "preset-rag-authorized": "Authorized Document Access",
+  "preset-rag-denied": "Unauthorized Document Access",
+  "preset-approval-queue": "Confidential Content Approval",
+  "preset-output-redact": "AI Response Protection",
+};
+
+const friendlyRisk = (preset: DemoPreset) => ({
+  PII: "Prevents personal identity and contact information from being exposed to an AI model.",
+  FINANCIAL: "Protects payment and banking information before an AI request is processed.",
+  SECRET: "Stops passwords, keys, and access tokens from being shared with an AI provider.",
+  INJECTION: preset.id === "preset-inj-indirect"
+    ? "Stops hidden instructions inside a document from controlling the AI response."
+    : "Stops instructions that try to bypass AI safety and security rules.",
+  RAG: "Checks document permissions before any protected information is retrieved.",
+  APPROVAL: "Keeps confidential information on hold until an authorized reviewer approves it.",
+  OUTPUT: "Checks AI-generated responses before sensitive information is returned to the user.",
+  BENIGN: "Shows that a legitimate security question can continue without a false alarm.",
+}[preset.category]);
+
+const friendlyExample = (preset: DemoPreset) => ({
+  PII: "Example: Detect an identity, phone, or email value before it reaches the model.",
+  FINANCIAL: "Example: Mask a card number or bank account before sending the request.",
+  SECRET: "Example: Stop an API key, password, or private token before model access.",
+  INJECTION: preset.id === "preset-inj-indirect"
+    ? "Example: Ignore malicious instructions embedded inside a retrieved document."
+    : "Example: Block a prompt that asks the AI to ignore its safety rules.",
+  RAG: "Example: Allow or deny a document based on the signed-in user’s permission.",
+  APPROVAL: "Example: Pause a confidential request until a reviewer decides.",
+  OUTPUT: "Example: Remove sensitive information found in an AI-generated answer.",
+  BENIGN: "Example: Allow a normal educational question about cybersecurity.",
+}[preset.category]);
+
 export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
   const navigate = useNavigate();
-  const [category, setCategory] = useState("ALL");
-  const [query, setQuery] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [statusError, setStatusError] = useState("");
   const [switchError, setSwitchError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [runs, setRuns] = useState<Record<string, Run>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // Also lock two clicks that occur before React rerenders.
   const lock = useRef(false);
   const generation = useRef({ id: user.id, version: 0 });
@@ -174,25 +244,22 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
   )!;
   const tourUnavailable = presetUnavailable(tourPreset, status, user.id);
   const tourBlocked = presetExecutionBlocked(tourPreset, user.id);
-  const filtered = FEATURE_PRESETS.filter(
-    (preset) =>
-      (category === "ALL" || preset.category === category) &&
-      [preset.id, preset.code, preset.title, preset.summary]
-        .join(" ")
-        .toLowerCase()
-        .includes(query.trim().toLowerCase()),
-  );
+  const filtered = selectedGroup
+    ? FEATURE_PRESETS.filter((preset) => demoGroup(preset) === selectedGroup)
+    : [];
+  const activePreset = filtered.find((preset) => preset.id === selectedPresetId) || filtered[0];
 
   return (
     <div className="demo-studio">
       <div className="page-head">
-        <span className="section-kicker">FEATURE DEMONSTRATION STUDIO</span>
-        <p>
-          Architecture v2: NeMo + Laya → Python policy → privacy → ACL → real
-          LLM → Regex + Presidio. All fixtures are synthetic. Historical cards
-          remain visible with their scope limitations.
-        </p>
+        <div>
+          <span className="section-kicker">FEATURE DEMOS</span>
+          <h1>See AI GUARD in Action</h1>
+          <p>Choose what you want to protect. We&apos;ll show you how AI GUARD helps.</p>
+        </div>
       </div>
+      <details className="demo-environment-details">
+        <summary>Environment details and guided testing</summary>
       <section className="panel" aria-label="Pipeline readiness">
         <h2>
           {statusError ? "Unable to check pipeline readiness" : !status ? "Checking pipeline readiness…" : status.pipeline_ready && status.execution_mode === "live"
@@ -238,8 +305,8 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
             className="demo-tour-btn primary"
             disabled={busy !== null || !!tourBlocked}
             onClick={() => {
-              setCategory("ALL");
-              setQuery("");
+              setSelectedGroup(demoGroup(tourPreset));
+              setSelectedPresetId(tourPreset.id);
               void runPreset(tourPreset);
             }}
           >
@@ -293,34 +360,66 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
           </p>
         )}
       </section>
-      <div className="demo-filters-wrap">
-        <div className="demo-category-pills">
-          {PRESET_CATEGORIES.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              className={`demo-filter-pill ${category === item.id ? "active" : ""}`}
-              onClick={() => setCategory(item.id)}
-            >
-              {item.label} (
-              {item.id === "ALL"
-                ? FEATURE_PRESETS.length
-                : FEATURE_PRESETS.filter(
-                    (preset) => preset.category === item.id,
-                  ).length}
-              )
-            </button>
-          ))}
-        </div>
-        <input
-          aria-label="Search scenarios"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search scenario IDs or titles"
-        />
-      </div>
-      <div className="preset-grid">
-        {filtered.map((preset) => {
+      </details>
+      {!selectedGroup ? (
+        <section className="protection-choices" aria-label="Choose what to protect">
+          {PROTECTION_CHOICES.map((choice) => {
+            const count = FEATURE_PRESETS.filter((preset) => demoGroup(preset) === choice.id).length;
+            const Icon = choice.icon;
+            return (
+              <button
+                type="button"
+                className="protection-choice-card"
+                key={choice.id}
+                onClick={() => {
+                  setSelectedGroup(choice.id);
+                  setSelectedPresetId(null);
+                }}
+              >
+                <span className="protection-choice-icon"><Icon size={25} /></span>
+                <span className="protection-choice-copy">
+                  <strong>{choice.label}</strong>
+                  <span>{choice.description}</span>
+                  <small>{count} demos available</small>
+                </span>
+                <ArrowRight size={18} />
+              </button>
+            );
+          })}
+        </section>
+      ) : (
+        <section className="demo-focus-view" aria-label="Selected protection category">
+          <button type="button" className="demo-back-btn" onClick={() => {
+            setSelectedGroup(null);
+            setSelectedPresetId(null);
+          }}>
+            <ArrowLeft size={15} /> Back to protections
+          </button>
+          <div className="demo-focus-heading">
+            <div>
+              <span className="section-kicker">{PROTECTION_CHOICES.find((choice) => choice.id === selectedGroup)?.label}</span>
+              <h2>Choose a demonstration</h2>
+              <p>{PROTECTION_CHOICES.find((choice) => choice.id === selectedGroup)?.description}</p>
+            </div>
+            <span className="demo-count">{filtered.length} demos available</span>
+          </div>
+          <div className="demo-option-list">
+            {filtered.map((preset) => (
+              <button
+                type="button"
+                key={preset.id}
+                className={`demo-option ${activePreset?.id === preset.id ? "active" : ""}`}
+                onClick={() => setSelectedPresetId(preset.id)}
+              >
+                <span><strong>{FRIENDLY_TITLES[preset.id] || preset.title}</strong><small>{friendlyRisk(preset)}</small></span>
+                <ArrowRight size={15} />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {selectedGroup && activePreset && <div className="preset-grid demo-selected-grid">
+        {[activePreset].map((preset) => {
           const unavailable = presetUnavailable(preset, status, user.id);
           const blocked = presetExecutionBlocked(preset, user.id);
           const run =
@@ -328,6 +427,32 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
           const verification = run?.result
             ? verifyDemo(preset, run.result, status, run.actor)
             : null;
+          const cardStatus = run?.error
+            ? { label: "Needs attention", tone: "failed" }
+            : status?.execution_mode === "mock" && run?.result
+              ? { label: "Simulation only", tone: "simulation" }
+            : verification?.status === "PASS"
+              ? { label: "Protected", tone: "passed" }
+              : verification?.status === "FAIL" || verification?.status === "ERROR"
+                ? { label: "Needs attention", tone: "failed" }
+                : verification?.status === "NOT IMPLEMENTED" || blocked
+                  ? { label: "Setup required", tone: "configuration" }
+                  : status?.execution_mode === "mock"
+                    ? { label: "Simulation only", tone: "simulation" }
+                    : { label: "Ready to try", tone: "available" };
+          const resultSummary = run?.error
+            ? "The demo could not complete. No security result was verified."
+            : status?.execution_mode === "mock" && run?.result
+              ? "This result came from a simulation and does not confirm live protection."
+            : verification?.status === "PASS"
+                    ? "The security rule successfully applied the expected protection."
+              : verification?.status === "FAIL"
+                ? "The run did not match the expected security behavior."
+                : verification?.status === "ERROR"
+                  ? "The gateway returned an invalid or incomplete result."
+                  : verification?.status === "NOT IMPLEMENTED"
+                    ? "This demo needs configuration before it can run."
+                    : "";
           return (
             <article
               key={preset.id}
@@ -335,21 +460,42 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
               className="preset-card-full"
             >
               <div className="preset-header">
-                <div>
-                  <div className="preset-badge-group">
-                    <span className="preset-code-badge">{preset.code}</span>
-                    <span className="badge">{preset.categoryLabel}</span>
-                  </div>
-                  <h3 className="preset-title">{preset.title}</h3>
-                </div>
-                <span className="badge" data-action={preset.expectedAction}>
-                  Expected: {preset.expectedAction}
-                </span>
+                <span className="demo-friendly-category">{PROTECTION_CHOICES.find((item) => item.id === demoGroup(preset))?.label}</span>
+                <span className={`demo-status-badge ${cardStatus.tone}`}>{cardStatus.label}</span>
               </div>
-              <p className="preset-summary">{preset.summary}</p>
+              <h3 className="preset-title">{FRIENDLY_TITLES[preset.id] || preset.title}</h3>
+              <p className="preset-summary"><strong>What are we protecting?</strong> {friendlyRisk(preset)}</p>
+              <p className="preset-example"><strong>What will AI GUARD do?</strong> {friendlyExample(preset)}</p>
+              <div className="preset-primary-actions">
+                <button
+                  type="button"
+                  className="preset-run-btn"
+                  disabled={busy !== null || !!blocked}
+                  title={blocked || "Run this demo using the configured gateway."}
+                  onClick={() => void runPreset(preset)}
+                >
+                  <Play size={13} />
+                  {busy === preset.id ? "Running…" : "Try it"}
+                </button>
+                <button
+                  type="button"
+                  className="preset-details-btn"
+                  aria-expanded={!!expanded[preset.id]}
+                  onClick={() => setExpanded((old) => ({ ...old, [preset.id]: !old[preset.id] }))}
+                >
+                  {expanded[preset.id] ? "Hide details" : "View details"}
+                </button>
+              </div>
+              {busy === preset.id && <p className="demo-run-feedback" role="status">Running the security check…</p>}
+              {resultSummary && <div className={`demo-result-summary ${cardStatus.tone}`} role="status"><strong>{cardStatus.label}</strong><span>{resultSummary}</span></div>}
+              {expanded[preset.id] && <div className="preset-technical-content">
+              <h4>Technical details</h4>
               <p>
                 <code>{preset.id}</code> · {preset.assertionDirection}{" "}
                 assertions · Persona: {preset.recommendedRoleName}
+              </p>
+              <p>
+                Expected result: <strong>{preset.expectedAction}</strong> · Model call: {preset.expectedModelCalled ? "allowed after protection" : "stopped before model"}
               </p>
               <p>POST /api/demos/run · no legacy /api/chat execution</p>
               <p className="preset-persona-recommendation">
@@ -385,16 +531,6 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
                 </p>
               </details>
               <div className="preset-actions">
-                <button
-                  type="button"
-                  className="preset-run-btn"
-                  disabled={busy !== null || !!blocked}
-                  title={blocked || "Request an actual backend result; missing components will be reported."}
-                  onClick={() => void runPreset(preset)}
-                >
-                  <Play size={13} />
-                  {busy === preset.id ? "Running…" : "Run demonstration"}
-                </button>
                 <button
                   type="button"
                   className="preset-chat-btn"
@@ -496,11 +632,11 @@ export function FeatureDemos({ user, onSwitchPersona }: FeatureDemosProps) {
                   </p>
                 </div>
               )}
+              </div>}
             </article>
           );
         })}
-      </div>
-      {!filtered.length && <p>No scenarios match this filter.</p>}
+      </div>}
     </div>
   );
 }

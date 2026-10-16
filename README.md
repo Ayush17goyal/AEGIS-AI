@@ -11,6 +11,9 @@ Requirements: Node 22+, Python 3.12+.
 ```powershell
 npm install
 python -m pip install -r backend/requirements.txt
+# Optional full ZIP-delivered layers (OCR, NeMo, Presidio, Laya runtime)
+python -m pip install -r backend/requirements-pipeline.txt
+python -m pip install -r backend/requirements-guardrails.txt
 python -m backend.evaluate
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
@@ -48,7 +51,7 @@ React + Vite + TypeScript + Tailwind CSS, Lucide icons, Recharts, React Router â
 - `backend/main.py`: authenticated API, policy and document management, aggregate analytics, metadata-only review records.
 - `src/main.tsx`, `src/styles.css`: responsive landing and security workspace.
 
-The local retrieval alternative uses lexical relevance ranking after permission filtering instead of ChromaDB. It is sufficient for the small synthetic corpus but does not implement vector embeddings, semantic search, or chunk-level indexing. Presidio and spaCy are optional future enhancements, not active dependencies; current rules do not reliably identify names or freeform addresses. Python 3.14 is installed on the development laptop, so lightweight deterministic rules avoid model dependency compatibility and downloads. No paid API is needed for prevention or demos.
+The local retrieval alternative uses lexical relevance ranking after permission filtering instead of ChromaDB. It is sufficient for the small synthetic corpus but does not implement vector embeddings, semantic search, or chunk-level indexing. The ZIP-delivered OCR, AES-GCM vault, Laya scorer adapter, and output guard now live under `backend/secure_layers`; their heavyweight dependencies remain optional and the gateway fails closed when they are not configured. Python 3.14 is installed on the development laptop, so the base install avoids model downloads. No paid API is needed for the offline demo.
 
 ## Enforcement
 
@@ -66,17 +69,22 @@ Interactive schema: http://127.0.0.1:8000/docs. Login returns a session bearer t
 |---|---|---|
 | POST | `/api/auth/login`, `/api/auth/logout` | Login / authenticated |
 | GET | `/api/auth/me`, `/api/health` | Authenticated / public |
-| POST | `/api/chat` | Authenticated; prompt and optional document ID |
-| GET, POST | `/api/documents` | Authenticated; server-filtered listing and ingestion |
-| PUT | `/api/documents/{id}` | Owner or administrator |
+| POST | `/api/chat`, `/api/demos/run` | Authenticated; approved gateway chat and feature-demo execution |
+| GET | `/api/documents`, `/api/documents/vault` | Authenticated; server-filtered document listing |
+| POST, PUT, DELETE | `/api/documents`, `/api/documents/upload`, `/api/documents/{id}` | Authenticated; owner/admin rules apply; unverified binary uploads remain unavailable for retrieval |
+| GET, PUT | `/api/me/document-retention` | Authenticated; retention preference for secure-chat uploads |
 | GET | `/api/incidents`, `/api/analytics`, `/api/evaluation` | Administrator |
 | GET, PUT | `/api/policies`, `/api/policies/{id}` | Administrator |
+| GET, PUT | `/api/settings/access`, `/api/settings/access/{employee}/monitoring`, `/api/settings/access/{employee}/resources/{document}` | Administrator; access and privacy-safe monitoring metadata |
+| GET | `/api/settings/activity`, `/api/me/dashboard`, `/api/me/history` | Authenticated; scope-filtered privacy-safe aggregates/history |
 | GET, PUT | `/api/approvals`, `/api/approvals/{id}` | Administrator |
 | POST | `/api/approvals/{id}/execute` | Administrator; approved request only |
 
 ## Configuration and hosted LLM
 
 See `.env.example`. Local Python does not automatically load `.env`; set environment variables in the shell before starting it. Docker Compose loads project `.env` automatically. Never put keys in Vite variables or frontend source. Set `LLM_PROVIDER=hosted`, `LLM_API_KEY`, optional `LLM_BASE_URL`, and `LLM_MODEL` for an OpenAI-compatible chat completions endpoint. The adapter has a 25-second timeout and no unsafe fallback. Hosted execution was not tested without an API key. Mock output is explicitly labeled and does not offer general-purpose model reasoning.
+
+NeMo Guardrails, Laya, and Presidio are not silently emulated: the approved pipeline reports them as unavailable and withholds execution until their verified package/model contracts are configured. When OCR dependencies are installed, binary uploads are decoded by magic bytes and processed through the ZIP OCR layer; unreadable or unsupported files remain `uploaded_unprocessed` and are never forwarded as provider context. Set `LAYA_MODEL_DIR` plus `AEGIS_VAULT_KEY` (or `LEAK_GW_KEYS`) to activate the ZIP Laya/privacy-vault path. Do not present the local mock or deterministic detector suite as proof of a live external model deployment.
 
 ## Docker
 

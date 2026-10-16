@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete
 from .database import Document, Event
-from .gateway import permitted_documents
+from .gateway import permitted_documents, safe_event_title
 from .integrations import ComponentUnavailable, LayaAdapter, NemoAdapter, OutputInspector, component_status
 from .privacy import Signal, transform
 from . import providers
@@ -38,7 +38,7 @@ def audit(db, user, result):
     identity = hmac.new(key, user["id"].encode(), hashlib.sha256).hexdigest()[:10]
     cutoff = (datetime.now(timezone.utc) - timedelta(days=int(os.getenv("AUDIT_RETENTION_DAYS", "30")))).isoformat()
     db.execute(delete(Event).where(Event.timestamp < cutoff))
-    db.add(Event(id=result["id"], timestamp=datetime.now(timezone.utc).isoformat(), user="usr-" + identity,
+    db.add(Event(id=result["id"], timestamp=datetime.now(timezone.utc).isoformat(), user="usr-" + identity, title=result.get("title"), resource_id=result.get("document_id"),
                  categories=sorted({f["category"] for f in result["findings"]}), risk=result["risk"], severity=result["severity"],
                  policies=result["policies"], action=result["action"], outcome=result["execution_status"],
                  model_called=result["model_called"], provider=result["provider"], latency=result["latency"], reason=result["reason_code"]))
@@ -47,11 +47,11 @@ def audit(db, user, result):
 
 async def run_approved(db, user, prompt, document_id=None, *, adapters=None):
     start = time.perf_counter()
-    result = {"id": "REQ-" + uuid.uuid4().hex, "response": "Request withheld.", "risk": 0, "severity": "Low",
+    result = {"id": "REQ-" + uuid.uuid4().hex, "title": safe_event_title(prompt, document_id), "response": "Request withheld.", "risk": 0, "severity": "Low",
               "action": "BLOCK", "reason": "Required security components are unavailable.", "reason_code": "COMPONENT_UNAVAILABLE",
               "findings": [], "policies": [], "model_called": False, "provider": providers.provider.name,
               "latency": 0, "sanitized_prompt": None, "context_count": 0, "execution_status": "NOT IMPLEMENTED",
-              "stages": ["auth"], "missing_components": [], "identity": user["id"]}
+              "stages": ["auth"], "missing_components": [], "identity": user["id"], "document_id": document_id}
 
     def finish():
         result["latency"] = round((time.perf_counter() - start) * 1000, 2)
@@ -94,10 +94,16 @@ async def run_approved(db, user, prompt, document_id=None, *, adapters=None):
             result.update(reason="Input policy prevented model execution.", reason_code="INPUT_" + action,
                           response="Approval required; execution is held." if action == "APPROVAL" else "Request blocked by input policy.")
             return finish()
-        sanitized = transform(prompt, findings)
+        vault_records = []
+        if isinstance(laya, LayaAdapter) and getattr(laya, "_gate", None) is not None:
+            protected = await laya.protect(prompt, user_id=user["id"], request_id=result["id"])
+            sanitized = protected.masked_text
+            vault_records.extend(protected.records)
+        else:
+            sanitized = transform(prompt, findings)
         result["stages"].append("privacy")
         context = []
-        for doc in docs:
+        for doc_index, doc in enumerate(docs, 1):
             # Retrieved text has its own input inspections before leaving the gateway.
             checks = [await asyncio.wait_for(a.inspect(doc.content), timeout=15) for a in (nemo, laya)]
             if policy_decision(checks) in ("BLOCK", "APPROVAL"):
@@ -106,7 +112,13 @@ async def run_approved(db, user, prompt, document_id=None, *, adapters=None):
             spans = [f for s in checks for f in s.get("findings", [])]
             if any(s["action"] == "MASK" for s in checks) and not spans:
                 raise ValueError("Context masking requires spans")
-            context.append("<untrusted_document>\n" + transform(doc.content, spans) + "\n</untrusted_document>")
+            if isinstance(laya, LayaAdapter) and getattr(laya, "_gate", None) is not None:
+                protected_doc = await laya.protect(doc.content, user_id=user["id"], request_id=result["id"], label_prefix=f"D{doc_index}_")
+                context_text = protected_doc.masked_text
+                vault_records.extend(protected_doc.records)
+            else:
+                context_text = transform(doc.content, spans)
+            context.append("<untrusted_document>\n" + context_text + "\n</untrusted_document>")
         result["stages"].append("retrieval")
         result["model_called"] = True
         result["context_count"] = len(context)
@@ -114,6 +126,10 @@ async def run_approved(db, user, prompt, document_id=None, *, adapters=None):
         result["stages"].append("llm")
         if not isinstance(output, str) or len(output) > 100000:
             raise ValueError("Invalid provider output")
+        if any(record.get("envelope", {}).get(key) and record["envelope"][key] in output
+               for record in vault_records for key in ("ct", "nonce")):
+            result.update(action="BLOCK", response="Unsafe model output was withheld.", reason_code="OUTPUT_BLOCKED")
+            return finish()
         output_findings = output_inspector.inspect(output)
         result["stages"].extend(["output_regex", "output_presidio"])
         if document_id and not permitted_documents(db, user, document_id=document_id):

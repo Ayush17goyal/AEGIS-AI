@@ -1,0 +1,4 @@
+# NeMo Guardrails for the input rail (guardrails/). Kept separate from requirements.txt so the base
+# install is unaffected. Verified: nemoguardrails 0.24.1 on Python 3.13.16 (2026-10-16).
+# NOT verified on Python 3.14.6 (local dev) or python:3.12-slim (Dockerfile.backend).
+nemoguardrails==0.24.1
